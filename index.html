@@ -1,7 +1,223 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Model Game Jam: Comparing AI Creativity</title>
+  <link href="https://fonts.googleapis.com/css?family=Space+Grotesk:700,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #191f36;
+      --secondary: #212c49;
+      --accent: #5de4c7;
+      --highlight: #ffe468;
+      --text: #f8f8fc;
+      --shadow: 0 4px 24px 0 rgba(25,31,54,.12);
+    }
+    body {
+      margin: 0;
+      font-family: 'Space Grotesk', Arial, sans-serif;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: var(--text);
+      min-height: 100vh;
+      letter-spacing: 0.01em;
+    }
+    header {
+      text-align: center;
+      padding: 3rem 1rem 1rem 1rem;
+    }
+    header h1 {
+      font-size: 2.8rem;
+      margin-bottom: 0.3em;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+    header p {
+      font-size: 1.25rem;
+      max-width: 700px;
+      margin: 0.5em auto 0 auto;
+      color: #c1d6e9;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background: rgba(25,31,54, 0.75);
+      box-shadow: var(--shadow);
+      border-radius: 1.2rem;
+    }
+    section {
+      margin-bottom: 2rem;
+    }
+    h2 {
+      font-weight: 700;
+      font-size: 1.55rem;
+      margin-top: 0;
+      color: var(--highlight);
+      letter-spacing: 0.015em;
+    }
+    pre {
+      background: #121420;
+      color: #e7eaf5;
+      font-size: 1rem;
+      border-radius: 8px;
+      padding: 1.2em;
+      overflow-x: auto;
+      margin-bottom: 1em;
+      line-height: 1.4;
+    }
+    .game-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.6rem;
+      justify-content: center;
+      margin-top: 2rem;
+    }
+    .game-card {
+      background: #202845;
+      box-shadow: var(--shadow);
+      border-radius: 1em;
+      width: 260px;
+      transition: transform .13s cubic-bezier(.4,2,.7,1), box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 1.5em 1em 1em 1em;
+      border: 2px solid transparent;
+      cursor: pointer;
+    }
+    .game-card:hover {
+      transform: translateY(-2px) scale(1.025);
+      border-color: var(--accent);
+      box-shadow: 0 8px 32px 0 rgba(93,228,199,0.22);
+    }
+    .game-card h3 {
+      margin: 0 0 0.5em 0;
+      color: var(--accent);
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    .game-card p {
+      font-size: 1rem;
+      color: #bac9ec;
+      min-height: 60px;
+    }
+    .game-card a {
+      display: inline-block;
+      margin-top: 1em;
+      font-weight: 700;
+      background: var(--accent);
+      color: #191f36;
+      padding: 0.6em 1.3em;
+      border-radius: 0.6em;
+      text-decoration: none;
+      box-shadow: 0 2px 10px 0 rgba(93,228,199,0.11);
+      transition: background .2s;
+    }
+    .game-card a:hover {
+      background: var(--highlight);
+      color: #000;
+    }
+    @media (max-width: 800px) {
+      .game-list {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.1rem;
+      }
+    }
+    footer {
+      text-align: center;
+      margin: 3rem 0 0 0;
+      color: #90a4c6;
+      font-size: .96rem;
+      letter-spacing: 0.02em;
+    }
+    hr {
+      border: 0;
+      border-top: 1.5px solid #354063;
+      margin: 2.5rem auto 2rem auto;
+      width: 85%;
+      max-width: 600px;
+    }
+  </style>
+</head>
 <body>
-<h1>Hello World</h1>
-<p>I'm hosted with GitHub Pages.</p>
+<header>
+  <h1>AI Model Game Jam</h1>
+  <p>
+    How do today’s leading language models compare in creative game generation?<br>
+    Explore each model’s take on the same prompt—see their surprising similarities and distinctive twists!
+  </p>
+</header>
+<main>
+  <section>
+    <h2>About This Project</h2>
+    <p>
+      During an experiment in AI-assisted creativity, multiple state-of-the-art language models were tasked with the same challenge: <strong>generate a fun, playable HTML/JS web game</strong> from a single, shared prompt.<br><br>
+      The results are fascinating: <em>most models, independently, chose to craft a “space” themed game—a striking convergence that none anticipated.</em>
+    </p>
+    <p>
+      This unexpected similarity raises intriguing questions about AI creativity, training data, and emergent patterns.<br><br>
+      <strong>Explore the games below, compare their designs, and see how each model put its own spin on the prompt!</strong>
+    </p>
+  </section>
+
+  <section>
+    <h2>The Prompt</h2>
+    <pre>
+Create a simple, fun, and visually appealing browser-based game. 
+Use only HTML, CSS, and JavaScript. Keep it self-contained in a single index.html. 
+The gameplay should be easy to understand, engaging, and playable on both desktop and mobile devices.
+    </pre>
+  </section>
+
+  <hr>
+
+  <section>
+    <h2>Explore the AI-Generated Games</h2>
+    <div class="game-list">
+      <div class="game-card">
+        <h3>Claude Sonnet 3.7</h3>
+        <p>A space shooter where you dodge asteroids and collect power-ups. See how Anthropics’ model imagines arcade action!</p>
+        <a href="claude-sonnet-3.7/index.html" target="_blank">Play Game</a>
+      </div>
+
+      <div class="game-card">
+        <h3>DeepSeek V1</h3>
+        <p>Test your skills in a galactic survival challenge—navigate obstacles and aim for a high score in the void!</p>
+        <a href="deepseek-v1/index.html" target="_blank">Play Game</a>
+      </div>
+
+      <div class="game-card">
+        <h3>Gemini 2.5 Pro</h3>
+        <p>Engage in fast-paced space defense. Clean visuals and mobile-friendly controls meet creative coding logic.</p>
+        <a href="gemini2.5pro/index.html" target="_blank">Play Game</a>
+      </div>
+
+      <div class="game-card">
+        <h3>Groq-3</h3>
+        <p>An interstellar experience with a unique mechanic or twist. How does Groq’s model tackle replayability?</p>
+        <a href="groq-3/index.html" target="_blank">Play Game</a>
+      </div>
+
+      <div class="game-card">
+        <h3>O3 Mini High</h3>
+        <p>A quick pick-up-and-play game set in space—see how simplicity and engagement align in the O3 code.</p>
+        <a href="o3-mini-high/index.html" target="_blank">Play Game</a>
+      </div>
+
+      <div class="game-card">
+        <h3>Optimus Alpha</h3>
+        <p>Dive into a retro-inspired space arcade, reimagined by Optimus Alpha. How does this model's approach stand out?</p>
+        <a href="optimus-alpha/index.html" target="_blank">Play Game</a>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  &copy; 2024 AI Model Game Jam &mdash; Experiment by [Your Name].<br>
+  Compare, play, and rethink AI “creativity”.
+</footer>
 </body>
 </html>
