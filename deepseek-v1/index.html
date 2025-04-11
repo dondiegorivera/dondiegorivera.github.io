@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Clicker</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a20;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #click-area {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        .celestial {
+            position: absolute;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        
+        .celestial:hover {
+            transform: scale(1.1);
+        }
+        
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        #score {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        #upgrades {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .upgrade-btn {
+            background: #3a3a8a;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .upgrade-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        
+        #event-notification {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 200;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="click-area"></div>
+        <div id="ui">
+            <div id="score">Cosmic Energy: 0</div>
+            <div id="upgrades">
+                <button class="upgrade-btn" id="auto-clicker" data-cost="50" data-power="1">Auto-Clicker (50)</button>
+                <button class="upgrade-btn" id="click-power" data-cost="100" data-power="2">Click Power (100)</button>
+            </div>
+        </div>
+        <div id="event-notification"></div>
+    </div>
+
+    <script>
+        // Game state
+        let score = 0;
+        let autoClickers = 0;
+        let clickPower = 1;
+        let celestialCount = 0;
+        let maxCelestials = 5;
+        let particles = [];
+        let lastEventTime = Date.now();
+        let eventActive = false;
+        
+        // DOM elements
+        const clickArea = document.getElementById('click-area');
+        const scoreDisplay = document.getElementById('score');
+        const autoClickerBtn = document.getElementById('auto-clicker');
+        const clickPowerBtn = document.getElementById('click-power');
+        const eventNotification = document.getElementById('event-notification');
+        
+        // Initialize game
+        function init() {
+            // Create initial celestial objects
+            for (let i = 0; i < maxCelestials; i++) {
+                createCelestial();
+            }
+            
+            // Set up click handler
+            clickArea.addEventListener('click', handleClick);
+            
+            // Set up upgrade buttons
+            autoClickerBtn.addEventListener('click', () => buyUpgrade('autoClicker'));
+            clickPowerBtn.addEventListener('click', () => buyUpgrade('clickPower'));
+            
+            // Start game loop
+            setInterval(gameLoop, 1000/60);
+            setInterval(autoClick, 1000);
+            
+            // Check for random events
+            setInterval(checkForEvent, 30000);
+        }
+        
+        // Game loop
+        function gameLoop() {
+            updateParticles();
+            updateButtons();
+        }
+        
+        // Handle clicks
+        function handleClick(e) {
+            const x = e.clientX;
+            const y = e.clientY;
+            
+            // Check if clicked on a celestial
+            const celestials = document.querySelectorAll('.celestial');
+            let clickedCelestial = false;
+            
+            celestials.forEach(celestial => {
+                const rect = celestial.getBoundingClientRect();
+                const distance = Math.sqrt(
+                    Math.pow(x - (rect.left + rect.width/2), 2) + 
+                    Math.pow(y - (rect.top + rect.height/2), 2)
+                );
+                
+                if (distance <= rect.width/2) {
+                    clickedCelestial = true;
+                    addScore(clickPower * parseInt(celestial.dataset.value));
+                    celestial.remove();
+                    createCelestial();
+                    createParticles(rect.left + rect.width/2, rect.top + rect.height/2, celestial.dataset.color);
+                }
+            });
+            
+            if (!clickedCelestial) {
+                addScore(-1); // Small penalty for missed clicks
+            }
+        }
+        
+        // Auto-clicker function
+        function autoClick() {
+            if (autoClickers > 0) {
+                const celestials = document.querySelectorAll('.celestial');
+                if (celestials.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * celestials.length);
+                    const celestial = celestials[randomIndex];
+                    const rect = celestial.getBoundingClientRect();
+                    
+                    addScore(clickPower * parseInt(celestial.dataset.value) * autoClickers);
+                    celestial.remove();
+                    createCelestial();
+                    createParticles(rect.left + rect.width/2, rect.top + rect.height/2, celestial.dataset.color);
+                }
+            }
+        }
+        
+        // Create a celestial object
+        function createCelestial() {
+            const celestial = document.createElement('div');
+            celestial.className = 'celestial';
+            
+            const size = Math.random() * 50 + 30;
+            const value = Math.floor(size / 10);
+            const colors = ['#ff5555', '#55ff55', '#5555ff', '#ffff55', '#ff55ff', '#55ffff'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            celestial.style.width = `${size}px`;
+            celestial.style.height = `${size}px`;
+            celestial.style.background = color;
+            celestial.style.left = `${Math.random() * (window.innerWidth - size)}px`;
+            celestial.style.top = `${Math.random() * (window.innerHeight - size)}px`;
+            celestial.dataset.value = value;
+            celestial.dataset.color = color;
+            
+            clickArea.appendChild(celestial);
+        }
+        
+        // Create particles
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    size: Math.random() * 5 + 2,
+                    color: color,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 60
+                });
+            }
+        }
+        
+        // Update particles
+        function updateParticles() {
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.1; // Gravity
+                particle.life--;
+                
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+            
+            // Draw particles
+            const existingParticles = document.querySelectorAll('.particle');
+            existingParticles.forEach(p => p.remove());
+            
+            particles.forEach(particle => {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.width = `${particle.size}px`;
+                p.style.height = `${particle.size}px`;
+                p.style.background = particle.color;
+                p.style.left = `${particle.x}px`;
+                p.style.top = `${particle.y}px`;
+                p.style.opacity = particle.life / 60;
+                clickArea.appendChild(p);
+            });
+        }
+        
+        // Add to score
+        function addScore(amount) {
+            score += amount;
+            if (score < 0) score = 0;
+            scoreDisplay.textContent = `Cosmic Energy: ${score}`;
+        }
+        
+        // Buy upgrades
+        function buyUpgrade(type) {
+            const btn = type === 'autoClicker' ? autoClickerBtn : clickPowerBtn;
+            const cost = parseInt(btn.dataset.cost);
+            
+            if (score >= cost) {
+                score -= cost;
+                scoreDisplay.textContent = `Cosmic Energy: ${score}`;
+                
+                if (type === 'autoClicker') {
+                    autoClickers += parseInt(btn.dataset.power);
+                    btn.dataset.cost = Math.floor(cost * 1.5);
+                    btn.textContent = `Auto-Clicker (${btn.dataset.cost})`;
+                } else {
+                    clickPower += parseInt(btn.dataset.power);
+                    btn.dataset.cost = Math.floor(cost * 1.8);
+                    btn.textContent = `Click Power (${btn.dataset.cost})`;
+                }
+            }
+        }
+        
+        // Update button states
+        function updateButtons() {
+            autoClickerBtn.disabled = score < parseInt(autoClickerBtn.dataset.cost);
+            clickPowerBtn.disabled = score < parseInt(clickPowerBtn.dataset.cost);
+        }
+        
+        // Check for random events
+        function checkForEvent() {
+            if (eventActive || Date.now() - lastEventTime < 60000) return;
+            
+            const events = [
+                {
+                    name: "Cosmic Storm",
+                    effect: () => {
+                        // Double click power for 10 seconds
+                        clickPower *= 2;
+                        setTimeout(() => { clickPower /= 2; }, 10000);
+                    },
+                    message: "Cosmic storm incoming! Double click power for 10 seconds!"
+                },
+                {
+                    name: "Asteroid Shower",
+                    effect: () => {
+                        // Create extra celestials
+                        for (let i = 0; i < 5; i++) {
+                            createCelestial();
+                        }
+                    },
+                    message: "Asteroid shower! Extra celestial objects incoming!"
+                },
+                {
+                    name: "Black Hole",
+                    effect: () => {
+                        // Remove all celestials
+                        document.querySelectorAll('.celestial').forEach(c => c.remove());
+                        // Create new ones
+                        for (let i = 0; i < maxCelestials; i++) {
+                            createCelestial();
+                        }
+                    },
+                    message: "Black hole appeared! Celestial objects rearranged!"
+                }
+            ];
+            
+            const event = events[Math.floor(Math.random() * events.length)];
+            eventActive = true;
+            lastEventTime = Date.now();
+            
+            eventNotification.textContent = event.message;
+            eventNotification.style.display = 'block';
+            
+            setTimeout(() => {
+                eventNotification.style.display = 'none';
+                event.effect();
+                eventActive = false;
+            }, 3000);
+        }
+        
+        // Start the game
+        window.onload = init;
+    </script>
+</body>
+</html>
