@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chroma Harmony</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #16213e;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas { 
+            display: block; 
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 16px;
+            text-shadow: 0 0 5px rgba(0,0,0,0.7);
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="instructions">
+        Click different zones at the bottom to change ball color | Match colors to pass through obstacles
+    </div>
+    
+    <script>
+        // Initialize game elements
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Color configuration
+        const colorMap = {
+            'red': { hex: '#FF4757', freq: 261.63 },    // C4
+            'orange': { hex: '#FFA502', freq: 293.66 },  // D4
+            'yellow': { hex: '#FEDC56', freq: 329.63 },  // E4
+            'green': { hex: '#00C853', freq: 349.23 },   // F4
+            'blue': { hex: '#338AFE', freq: 392.00 },    // G4
+            'purple': { hex: '#AA00FF', freq: 440.00 }   // A4
+        };
+        
+        // Game state
+        let gameStarted = false;
+        let gameOver = false;
+        let score = 0;
+        let highScore = localStorage.getItem('chromaHighScore') || 0;
+        let audioContext = null;
+        let lastObstacleTime = 0;
+        let obstacleInterval = 1500; // milliseconds
+        
+        // Game objects
+        let ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 15,
+            velocityX: 3,
+            velocityY: -3,
+            color: 'red',
+            gravity: 0.2
+        };
+        
+        let platforms = [];
+        let obstacles = [];
+        let particles = [];
+        
+        // Initialize audio context only after user interaction (browser policy)
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        // Generate musical note based on color - using Web Audio API for procedural sound generation [[1]]
+        function playNote(colorName) {
+            initAudio();
+            
+            const color = colorMap[colorName];
+            if (!color) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.value = color.freq;
+            gainNode.gain.value = 0.1;
+            
+            oscillator.start();
+            
+            // Create dynamic envelope for better sound quality [[4]]
+            gainNode.gain.exponentialRampToValueAtTime(
+                0.001, audioContext.currentTime + 0.5);
+            
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+        
+        // Create visual particle effects
+        function createParticles(x, y, colorName) {
+            const color = colorMap[colorName].hex;
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    radius: Math.random() * 3 + 1,
+                    velocityX: (Math.random() - 0.5) * 5,
+                    velocityY: (Math.random() - 0.5) * 5,
+                    color: color,
+                    alpha: 1,
+                    speed: 0.03 + Math.random() * 0.05
+                });
+            }
+        }
+        
+        // Generate obstacles procedurally with increasing difficulty [[2]]
+        function generateObstacle() {
+            const now = Date.now();
+            if (now - lastObstacleTime < obstacleInterval) return;
+            
+            lastObstacleTime = now;
+            
+            // Increase difficulty as score grows
+            obstacleInterval = Math.max(600, 1500 - score * 15);
+            
+            const side = Math.floor(Math.random() * 4);
+            let x, y, velocityX, velocityY;
+            const size = 25;
+            const colorKeys = Object.keys(colorMap);
+            const colorName = colorKeys[Math.floor(Math.random() * colorKeys.length)];
+            
+            switch (side) {
+                case 0: // top
+                    x = Math.random() * canvas.width;
+                    y = -size;
+                    velocityX = (Math.random() - 0.5) * 2;
+                    velocityY = 1.5 + (score * 0.03);
+                    break;
+                case 1: // right
+                    x = canvas.width + size;
+                    y = Math.random() * canvas.height;
+                    velocityX = -(1.5 + (score * 0.03));
+                    velocityY = (Math.random() - 0.5) * 2;
+                    break;
+                case 2: // bottom
+                    x = Math.random() * canvas.width;
+                    y = canvas.height + size;
+                    velocityX = (Math.random() - 0.5) * 2;
+                    velocityY = -(1.5 + (score * 0.03));
+                    break;
+                case 3: // left
+                    x = -size;
+                    y = Math.random() * canvas.height;
+                    velocityX = 1.5 + (score * 0.03);
+                    velocityY = (Math.random() - 0.5) * 2;
+                    break;
+            }
+            
+            obstacles.push({
+                x: x,
+                y: y,
+                size: size,
+                velocityX: velocityX,
+                velocityY: velocityY,
+                color: colorName
+            });
+        }
+        
+        // Reset game state
+        function resetGame() {
+            ball = {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                radius: 15,
+                velocityX: 3,
+                velocityY: -3,
+                color: 'red',
+                gravity: 0.2
+            };
+            platforms = [];
+            obstacles = [];
+            particles = [];
+            score = 0;
+            gameOver = false;
+            obstacleInterval = 1500;
+            lastObstacleTime = Date.now();
+        }
+        
+        // Main game rendering
+        function render() {
+            // Create subtle radial background
+            const bgGradient = ctx.createRadialGradient(
+                canvas.width/2, canvas.height/2, 0,
+                canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height)
+            );
+            bgGradient.addColorStop(0, '#1a1a2e');
+            bgGradient.addColorStop(1, '#0f3460');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw subtle grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            for (let x = 0; x < canvas.width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Render ball
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = colorMap[ball.color].hex;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Render platforms
+            platforms.forEach(platform => {
+                ctx.fillStyle = colorMap[platform.color].hex;
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                
+                // Add glow effect
+                ctx.shadowColor = colorMap[platform.color].hex;
+                ctx.shadowBlur = 15;
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                ctx.shadowBlur = 0;
+            });
+            
+            // Render obstacles
+            obstacles.forEach(obstacle => {
+                ctx.beginPath();
+                ctx.arc(obstacle.x, obstacle.y, obstacle.size, 0, Math.PI * 2);
+                ctx.fillStyle = colorMap[obstacle.color].hex;
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Pulsing effect
+                const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
+                ctx.beginPath();
+                ctx.arc(obstacle.x, obstacle.y, obstacle.size * (1 + pulse * 0.1), 0, Math.PI * 2);
+                ctx.strokeStyle = `${colorMap[obstacle.color].hex}55`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+            
+            // Render particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.velocityX;
+                p.y += p.velocityY;
+                p.alpha -= p.speed;
+                
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `${p.color}${Math.floor(p.alpha * 255).toString(16).padStart(2, '0')}`;
+                ctx.fill();
+            }
+            
+            // UI elements
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 20, 30);
+            ctx.fillText(`High Score: ${highScore}`, 20, 60);
+            
+            // Color selection zones
+            const zoneWidth = canvas.width / 6;
+            const colors = Object.keys(colorMap);
+            for (let i = 0; i < 6; i++) {
+                ctx.fillStyle = colorMap[colors[i]].hex;
+                ctx.globalAlpha = 0.2;
+                ctx.fillRect(i * zoneWidth, canvas.height - 40, zoneWidth, 40);
+                ctx.globalAlpha = 1.0;
+                
+                // Indicator if this is current ball color
+                if (colors[i] === ball.color) {
+                    ctx.beginPath();
+                    ctx.arc(i * zoneWidth + zoneWidth/2, canvas.height - 20, 10, 0, Math.PI * 2);
+                    ctx.fillStyle = 'white';
+                    ctx.fill();
+                }
+            }
+            
+            // Game state messages
+            if (!gameStarted) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Chroma Harmony', canvas.width / 2, canvas.height / 2 - 40);
+                ctx.font = '24px Arial';
+                ctx.fillText('Match colors to pass through obstacles', canvas.width / 2, canvas.height / 2 + 10);
+                ctx.fillText('Click to Start', canvas.width / 2, canvas.height / 2 + 50);
+            }
+            
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 40);
+                ctx.font = '32px Arial';
+                ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2);
+                ctx.font = '24px Arial';
+                if (score > highScore) {
+                    ctx.fillText('New High Score!', canvas.width / 2, canvas.height / 2 + 40);
+                }
+                ctx.fillText('Click to Restart', canvas.width / 2, canvas.height / 2 + 80);
+            }
+        }
+        
+        // Update game state
+        function update() {
+            if (!gameStarted || gameOver) return;
+            
+            // Update ball physics
+            ball.velocityY += ball.gravity;
+            ball.x += ball.velocityX;
+            ball.y += ball.velocityY;
+            
+            // Wall collisions
+            if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) {
+                ball.velocityX = -ball.velocityX * 0.95;
+                if (ball.x - ball.radius < 0) ball.x = ball.radius;
+                if (ball.x + ball.radius > canvas.width) ball.x = canvas.width - ball.radius;
+            }
+            if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
+                ball.velocityY = -ball.velocityY * 0.95;
+                if (ball.y - ball.radius < 0) ball.y = ball.radius;
+                if (ball.y + ball.radius > canvas.height) ball.y = canvas.height - ball.radius;
+            }
+            
+            // Platform collisions
+            for (let i = platforms.length - 1; i >= 0; i--) {
+                const platform = platforms[i];
+                if (ball.x + ball.radius > platform.x &&
+                    ball.x - ball.radius < platform.x + platform.width &&
+                    ball.y + ball.radius > platform.y &&
+                    ball.y - ball.radius < platform.y + platform.height) {
+                    
+                    // Change ball color
+                    ball.color = platform.color;
+                    
+                    // Bounce effect
+                    ball.velocityY = -Math.abs(ball.velocityY) * 0.85;
+                    
+                    // Remove platform
+                    platforms.splice(i, 1);
+                }
+            }
+            
+            // Generate obstacles
+            generateObstacle();
+            
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obstacle = obstacles[i];
+                obstacle.x += obstacle.velocityX;
+                obstacle.y += obstacle.velocityY;
+                
+                // Remove off-screen obstacles
+                const offScreen = 
+                    obstacle.x < -obstacle.size * 2 || 
+                    obstacle.x > canvas.width + obstacle.size * 2 ||
+                    obstacle.y < -obstacle.size * 2 ||
+                    obstacle.y > canvas.height + obstacle.size * 2;
+                
+                if (offScreen) {
+                    obstacles.splice(i, 1);
+                    continue;
+                }
+                
+                // Check collision with ball
+                const dx = ball.x - obstacle.x;
+                const dy = ball.y - obstacle.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < ball.radius + obstacle.size) {
+                    if (ball.color === obstacle.color) {
+                        // Successful pass - create adaptive soundscape based on gameplay [[4]]
+                        score++;
+                        playNote(obstacle.color);
+                        createParticles(obstacle.x, obstacle.y, obstacle.color);
+                        obstacles.splice(i, 1);
+                    } else {
+                        // Game over
+                        gameOver = true;
+                        if (score > highScore) {
+                            highScore = score;
+                            localStorage.setItem('chromaHighScore', highScore);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Main game loop
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Event handlers
+        canvas.addEventListener('click', (e) => {
+            if (!gameStarted) {
+                gameStarted = true;
+                resetGame();
+                return;
+            }
+            
+            if (gameOver) {
+                resetGame();
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Only allow platform placement in the bottom color zones
+            if (y > canvas.height - 50) {
+                const zoneWidth = canvas.width / 6;
+                const zoneIndex = Math.floor(x / zoneWidth);
+                const colors = Object.keys(colorMap);
+                const color = colors[zoneIndex];
+                
+                // Create platform above the color zone
+                platforms.push({
+                    x: x,
+                    y: canvas.height - 70,
+                    width: 40,
+                    height: 10,
+                    color: color
+                });
+            }
+        });
+        
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // Start the game loop
+        gameLoop();
+    </script>
+</body>
+</html>
