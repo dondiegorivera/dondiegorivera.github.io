@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Neon Flow — A Tiny, Juicy Arcade</title>
+    <style>
+      :root{
+        --bg0:#060712; --bg1:#0b0e2a; --bg2:#11143a; --fg:#e7ecff;
+        --accent:#6cf; --danger:#ff4d6d; --good:#5cff93; --gold:#ffd166;
+      }
+      *{box-sizing:border-box}
+      html,body{height:100%;}
+      body{
+        margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color:var(--fg);
+        background: radial-gradient(1200px 800px at 20% 10%, #1b1f50 0%, #0d1035 30%, #090b24 60%, #060712 100%);
+        overflow:hidden;
+      }
+      canvas{ display:block; position:fixed; inset:0; width:100vw; height:100vh; }
+      .hud{
+        position:fixed; left:0; right:0; top:0; padding:12px 16px;
+        display:flex; align-items:center; justify-content:space-between;
+        text-shadow:0 2px 8px rgba(0,0,0,.6);
+        pointer-events:none;
+        font-weight:600;
+      }
+      .hud .pill{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); padding:6px 10px; border-radius:999px; margin-right:8px; }
+      .row{ display:flex; align-items:center; gap:8px; }
+      .btn{ pointer-events:auto; cursor:pointer; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); padding:6px 10px; border-radius:10px; transition:.15s ease transform, .2s ease background; user-select:none; }
+      .btn:hover{ transform:translateY(-1px); background:rgba(255,255,255,.14); }
+      .overlay{ position:fixed; inset:0; display:grid; place-items:center; padding:24px; }
+      .card{
+        width:min(680px, 92vw);
+        background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+        border:1px solid rgba(255,255,255,.16);
+        border-radius:18px; padding:22px 22px 18px; text-align:center;
+        box-shadow: 0 30px 80px rgba(0,0,0,.40);
+        backdrop-filter: blur(6px);
+      }
+      h1{ margin:8px 0 8px; font-size: clamp(28px, 4.6vw, 46px); letter-spacing:.5px; }
+      p{ margin:8px 0; opacity:.9; }
+      .kbd{ display:inline-block; min-width:1.8em; padding:.14em .5em; border-radius:6px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.06); }
+      .tips{ display:grid; grid-template-columns:1fr; gap:8px; text-align:left; margin:14px 0 6px; }
+      .title{ background:linear-gradient(90deg, #7cf 0%, #9f7cff 50%, #5cffc8 100%);
+              -webkit-background-clip:text; background-clip:text; color:transparent; }
+      .meta{ opacity:.8; font-size:13px; }
+      .hidden{ display:none !important; }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div class="hud" id="hud">
+      <div class="row">
+        <div class="pill" id="score">Score: 0</div>
+        <div class="pill" id="mult">x1.0</div>
+        <div class="pill" id="best">Best: 0</div>
+      </div>
+      <div class="row">
+        <div class="btn" id="pauseBtn">Pause</div>
+        <div class="btn" id="muteBtn">Sound: On</div>
+      </div>
+    </div>
+
+    <div class="overlay" id="start">
+      <div class="card">
+        <h1 class="title">Neon Flow</h1>
+        <p>Collect energy orbs, dodge hazards, chain combos, and chase your high score in a silky neon arena.</p>
+        <div class="tips">
+          <p>Controls:</p>
+          <p>• Mouse/Touch: move towards pointer</p>
+          <p>• Keyboard: <span class="kbd">WASD</span> or <span class="kbd">Arrow Keys</span></p>
+          <p>• Pause: <span class="kbd">P</span> or click Pause</p>
+        </div>
+        <p class="meta">Time dilates on close calls. Keep moving for flow, collect fast to raise the multiplier.</p>
+        <div class="row" style="justify-content:center; gap:10px; margin-top:12px;">
+          <div class="btn" id="startBtn">Play</div>
+          <div class="btn" id="howBtn">How to Play</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="how">
+      <div class="card">
+        <h1>How to Play</h1>
+        <p>Zip around the arena. Grab <span style="color:var(--good)">green-blue orbs</span> to score and raise your combo. Avoid <span style="color:var(--danger)">red hazards</span> — a single hit ends the run.</p>
+        <p>Chain quick pickups to ramp your multiplier. Near misses trigger a brief slow-motion window — use it to thread the needle.</p>
+        <p class="meta">Tip: Don’t tunnel-vision. Herd hazards to the edges, then cut through the gaps.</p>
+        <div class="row" style="justify-content:center; gap:10px; margin-top:12px;">
+          <div class="btn" id="backBtn">Back</div>
+          <div class="btn" id="playBtn2">Play Now</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="over">
+      <div class="card">
+        <h1>Run Over</h1>
+        <p id="final"></p>
+        <div class="row" style="justify-content:center; gap:10px; margin-top:12px;">
+          <div class="btn" id="againBtn">Play Again</div>
+          <div class="btn" id="homeBtn">Menu</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Neon Flow — single-file canvas arcade. Self-contained, no assets.
+      const canvas = document.getElementById('game');
+      const hudScore = document.getElementById('score');
+      const hudMult = document.getElementById('mult');
+      const hudBest = document.getElementById('best');
+      const pauseBtn = document.getElementById('pauseBtn');
+      const muteBtn = document.getElementById('muteBtn');
+      const startOv = document.getElementById('start');
+      const howOv = document.getElementById('how');
+      const overOv = document.getElementById('over');
+      const startBtn = document.getElementById('startBtn');
+      const howBtn = document.getElementById('howBtn');
+      const backBtn = document.getElementById('backBtn');
+      const playBtn2 = document.getElementById('playBtn2');
+      const againBtn = document.getElementById('againBtn');
+      const homeBtn = document.getElementById('homeBtn');
+      const finalP = document.getElementById('final');
+
+      const ctx = canvas.getContext('2d');
+      let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      function resize(){
+        const w = Math.floor(innerWidth * DPR);
+        const h = Math.floor(innerHeight * DPR);
+        canvas.width = w; canvas.height = h;
+      }
+      addEventListener('resize', resize); resize();
+
+      // Simple PRNG for consistent particle randomness
+      let seed = Math.random()*1e9;
+      function rand(){ seed = (seed*1664525+1013904223)|0; return (seed>>>0)/4294967296; }
+      function randRange(a,b){ return a + (b-a)*rand(); }
+      const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+      const dist2 = (x1,y1,x2,y2)=>{ const dx=x2-x1, dy=y2-y1; return dx*dx+dy*dy; };
+
+      // Input
+      const keys = new Set();
+      addEventListener('keydown', e=>{ keys.add(e.key.toLowerCase()); if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase())) e.preventDefault(); });
+      addEventListener('keyup', e=>{ keys.delete(e.key.toLowerCase()); });
+      const pointer = { x: innerWidth/2, y: innerHeight/2, down:false, moved:false };
+      function setPointer(e){
+        if(e.touches && e.touches[0]){ pointer.x = e.touches[0].clientX; pointer.y = e.touches[0].clientY; }
+        else { pointer.x = e.clientX; pointer.y = e.clientY; }
+        pointer.moved = true;
+      }
+      addEventListener('mousemove', setPointer, {passive:true});
+      addEventListener('touchmove', setPointer, {passive:true});
+      addEventListener('mousedown', e=>{ pointer.down=true; setPointer(e); });
+      addEventListener('touchstart', e=>{ pointer.down=true; setPointer(e); });
+      addEventListener('mouseup', ()=>pointer.down=false);
+      addEventListener('touchend', ()=>pointer.down=false);
+
+      // Audio — minimal procedural beeps
+      let audioCtx = null; let muted=false;
+      function ensureAudio(){ if(!audioCtx){ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } }
+      function beep({freq=440, dur=0.08, type='sine', gain=0.06, slide=0}={}){
+        if(muted) return; ensureAudio();
+        const t0 = audioCtx.currentTime;
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = type; o.frequency.value=freq;
+        if(slide!==0) o.frequency.linearRampToValueAtTime(Math.max(40,freq+slide), t0+dur);
+        g.gain.value=0; g.gain.linearRampToValueAtTime(gain, t0+0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t0); o.stop(t0+dur+0.02);
+      }
+
+      // Game state
+      const state = {
+        playing:false, paused:false, over:false,
+        t:0, score:0, best: Number(localStorage.getItem('neonflow_best')||0),
+        mult:1, multFill:0, difficulty:0,
+        slow:0, // brief slow-mo on near misses
+      };
+      hudBest.textContent = `Best: ${state.best}`;
+
+      // Entities
+      const world = { w: ()=>canvas.width, h: ()=>canvas.height };
+      const player = { x: canvas.width/2, y: canvas.height/2, vx:0, vy:0, r: 11*DPR, speed: 420, color:'#9cf' };
+      const orbs = []; // collectibles
+      const foes = []; // hazards
+      const puffs = []; // particles
+
+      function spawnOrb(){
+        const margin = 24*DPR;
+        const x = randRange(margin, world.w()-margin);
+        const y = randRange(margin, world.h()-margin);
+        orbs.push({x,y,r:9*DPR, t:0, val:10});
+      }
+      function spawnFoe(){
+        const side = Math.floor(rand()*4);
+        let x,y; const m=30*DPR; const W=world.w(), H=world.h();
+        if(side===0){ x=randRange(0,W); y=-m; }
+        else if(side===1){ x=W+m; y=randRange(0,H); }
+        else if(side===2){ x=randRange(0,W); y=H+m; }
+        else { x=-m; y=randRange(0,H); }
+        const speed = 80 + state.difficulty*18 + rand()*30;
+        foes.push({x,y,r:12*DPR, vx:0, vy:0, base: speed, t:0});
+      }
+
+      // Particles
+      function burst(x,y, col='#7cf', n=20){
+        for(let i=0;i<n;i++){
+          const a = rand()*Math.PI*2; const sp = randRange(60,260);
+          puffs.push({x,y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, life: randRange(0.25,0.6), r: randRange(1.5,3.5)*DPR, col});
+        }
+      }
+
+      // Helpers
+      function nearestFoeDist2(px,py){
+        let m = 1e12; for(const f of foes){ const d=dist2(px,py,f.x,f.y); if(d<m) m=d; } return m;
+      }
+
+      // Renderer
+      function drawGlowCircle(x,y,r, col, glow=1){
+        const g = ctx.createRadialGradient(x,y, r*0.2, x,y, r*glow);
+        g.addColorStop(0, col);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r*glow,0,Math.PI*2); ctx.fill();
+      }
+
+      function reset(){
+        player.x = canvas.width/2; player.y = canvas.height/2; player.vx=player.vy=0;
+        state.t=0; state.score=0; state.mult=1; state.multFill=0; state.difficulty=0; state.slow=0; state.over=false;
+        orbs.length=0; foes.length=0; puffs.length=0; for(let i=0;i<4;i++) spawnOrb();
+      }
+
+      function startGame(){
+        ensureAudio();
+        startOv.classList.add('hidden'); howOv.classList.add('hidden'); overOv.classList.add('hidden');
+        state.playing=true; state.paused=false; reset();
+      }
+
+      function endGame(){
+        state.playing=false; state.over=true;
+        if(state.score>state.best){ state.best=state.score; localStorage.setItem('neonflow_best', String(state.best)); }
+        finalP.textContent = `Score: ${Math.floor(state.score)} · Best: ${state.best}`;
+        overOv.classList.remove('hidden');
+      }
+
+      // Game loop
+      let last=performance.now();
+      function loop(now){
+        const rawDt = Math.min(1/30, (now-last)/1000); last=now; // clamp
+        const W = world.w(), H = world.h();
+
+        // Update
+        let dt = rawDt;
+        if(state.playing && !state.paused){
+          state.t += dt; state.difficulty += dt*0.07; // gentle ramp
+
+          // Input → velocity
+          let ax=0, ay=0;
+          const k = (s)=>keys.has(s);
+          if(k('arrowleft')||k('a')) ax-=1;
+          if(k('arrowright')||k('d')) ax+=1;
+          if(k('arrowup')||k('w')) ay-=1;
+          if(k('arrowdown')||k('s')) ay+=1;
+          // Pointer attraction
+          if(pointer.moved){
+            const dx = pointer.x*DPR - player.x; const dy = pointer.y*DPR - player.y;
+            const L = Math.hypot(dx,dy)+1e-6; const steer = 1.0; ax += (dx/L)*steer; ay += (dy/L)*steer;
+          }
+          // Normalize
+          const len = Math.hypot(ax,ay);
+          if(len>0){ ax/=len; ay/=len; }
+          const targetSpeed = player.speed * (1 + state.mult*0.04);
+          player.vx += (ax*targetSpeed - player.vx) * 8*dt;
+          player.vy += (ay*targetSpeed - player.vy) * 8*dt;
+
+          // Foes steer towards player with slight noise
+          for(const f of foes){
+            f.t += dt; const dx=player.x-f.x, dy=player.y-f.y; const L=Math.hypot(dx,dy)+1e-6;
+            const wob = Math.sin(f.t*3 + f.x*0.003 + f.y*0.004);
+            const sp = f.base * (1 + state.difficulty*0.05);
+            f.vx = (dx/L + wob*0.25) * sp; f.vy = (dy/L + Math.cos(f.t*2)*0.2) * sp;
+            f.x += f.vx*dt; f.y += f.vy*dt;
+          }
+
+          // Move player
+          player.x = clamp(player.x + player.vx*dt, 10*DPR, W-10*DPR);
+          player.y = clamp(player.y + player.vy*dt, 10*DPR, H-10*DPR);
+
+          // Spawn pacing
+          if(orbs.length<6 && rand()<0.02) spawnOrb();
+          if(foes.length< Math.min(3+Math.floor(state.difficulty*0.9), 12) && rand()<0.04) spawnFoe();
+
+          // Collisions
+          let collected=0; let nearMiss=false;
+          for(let i=orbs.length-1;i>=0;i--){
+            const o=orbs[i]; o.t+=dt; const r=player.r+o.r; if(dist2(player.x,player.y,o.x,o.y) < r*r){
+              orbs.splice(i,1); collected++; state.multFill += 0.28; state.multFill = Math.min(state.multFill, 1.5);
+              const add = o.val * state.mult;
+              state.score += add; burst(o.x,o.y,'#7cf', 18);
+              beep({freq: 660+rand()*80, type:'triangle', gain:0.05, dur:0.07, slide:120});
+            }
+          }
+          if(collected>0){
+            state.mult = clamp(state.mult + 0.08*collected, 1, 8);
+          } else {
+            // decay if idle
+            state.mult = clamp(state.mult - 0.14*dt, 1, 8);
+          }
+          state.score += dt* (0.5 + state.mult*0.15); // drip score
+
+          for(const f of foes){
+            const r = player.r + f.r;
+            const d2 = dist2(player.x,player.y,f.x,f.y);
+            if(d2 < r*r){ // hit
+              burst(player.x,player.y,'#ff4d6d', 38);
+              for(let k=0;k<3;k++) spawnOrb();
+              beep({freq: 120, type:'sawtooth', gain:0.06, dur:0.2, slide:-60});
+              endGame();
+            }
+            if(d2 < (r*r)*2.0) nearMiss=true;
+          }
+          if(nearMiss){ state.slow = Math.min(1, state.slow + 1.2*dt); }
+          else { state.slow = Math.max(0, state.slow - 0.7*dt); }
+
+          // Particles update
+          for(let i=puffs.length-1;i>=0;i--){ const p=puffs[i]; p.life -= dt; if(p.life<=0){ puffs.splice(i,1); continue; } p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-0.9*dt; p.vy*=1-0.9*dt; }
+        }
+
+        // Render
+        const slowFactor = 1 - 0.6*state.slow; // 1.0 → normal, ~0.4 at peak slow
+        // motion blur/ trails via alpha fade
+        ctx.globalCompositeOperation='source-over';
+        ctx.fillStyle = `rgba(10,12,28, ${state.playing? (0.14*slowFactor) : 0.24})`;
+        ctx.fillRect(0,0,W,H);
+
+        // subtle vignette
+        const vg = ctx.createRadialGradient(W/2,H/2,0, W/2,H/2, Math.hypot(W,H)/1.2);
+        vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.5)');
+        ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+
+        // orbs
+        for(const o of orbs){
+          drawGlowCircle(o.x,o.y,o.r*1.8,'rgba(124,207,255,0.7)',1.8);
+          ctx.fillStyle='#9df';
+          ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fill();
+        }
+        // foes
+        for(const f of foes){
+          drawGlowCircle(f.x,f.y,f.r*1.7,'rgba(255,77,109,0.6)',1.9);
+          ctx.fillStyle='#ff5b77'; ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,Math.PI*2); ctx.fill();
+          // eye highlight
+          ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(f.x-f.r*0.25, f.y-f.r*0.15, f.r*0.3, 0, Math.PI*2); ctx.fill();
+        }
+
+        // player with flow ring
+        drawGlowCircle(player.x,player.y, player.r*1.9, 'rgba(160,200,255,0.75)', 2.1);
+        ctx.fillStyle='#bfe3ff'; ctx.beginPath(); ctx.arc(player.x,player.y,player.r,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(124,207,255,${0.25+0.35*(state.mult-1)/7})`;
+        ctx.lineWidth=2*DPR; ctx.beginPath(); ctx.arc(player.x,player.y, player.r*1.6 + Math.sin(state.t*8)*1.5*DPR, 0, Math.PI*2); ctx.stroke();
+
+        // particles
+        ctx.globalCompositeOperation='lighter';
+        for(const p of puffs){ ctx.fillStyle=p.col; ctx.globalAlpha = clamp(p.life*2,0,1); ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); }
+        ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+
+        // HUD
+        hudScore.textContent = `Score: ${Math.floor(state.score)}`;
+        hudMult.textContent = `x${state.mult.toFixed(1)}`;
+        hudBest.textContent = `Best: ${state.best}`;
+
+        // subtle screen shake on slow
+        const shake = state.slow*2*DPR;
+        canvas.style.transform = `translate(${(rand()-0.5)*shake}px, ${(rand()-0.5)*shake}px)`;
+
+        // Slow-mo actually affecting sim by altering last time step for next frame
+        last += (1-slowFactor)*16; // nudge time to simulate dilation feel
+
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+
+      // UI interactions
+      function setPaused(p){ state.paused=p; pauseBtn.textContent = p? 'Resume':'Pause'; }
+      pauseBtn.addEventListener('click', ()=>{ if(!state.playing) return; setPaused(!state.paused); });
+      muteBtn.addEventListener('click', ()=>{ muted=!muted; muteBtn.textContent = `Sound: ${muted?'Off':'On'}`; if(!muted) ensureAudio(); });
+
+      startBtn.addEventListener('click', startGame);
+      playBtn2.addEventListener('click', startGame);
+      againBtn.addEventListener('click', startGame);
+      homeBtn.addEventListener('click', ()=>{ overOv.classList.add('hidden'); startOv.classList.remove('hidden'); });
+      howBtn.addEventListener('click', ()=>{ startOv.classList.add('hidden'); howOv.classList.remove('hidden'); });
+      backBtn.addEventListener('click', ()=>{ howOv.classList.add('hidden'); startOv.classList.remove('hidden'); });
+
+      addEventListener('keydown', (e)=>{
+        const k = e.key.toLowerCase();
+        if(k==='p'){ if(state.playing){ setPaused(!state.paused); } }
+        if(k===' '){ if(startOv.classList.contains('hidden') && overOv.classList.contains('hidden')) return; startGame(); }
+      });
+
+      // First interaction to init audio on iOS
+      addEventListener('pointerdown', ()=>ensureAudio(), {once:true});
+
+      // Accessibility: ensure canvas focus ring doesn't trap
+      canvas.setAttribute('aria-label','Neon Flow canvas game');
+    </script>
+  </body>
+  </html>
+

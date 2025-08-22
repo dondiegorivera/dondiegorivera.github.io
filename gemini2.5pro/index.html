@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbital Oddity</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #1a1a2e; /* Dark space blue */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #e0e0e0;
+            overflow: hidden; /* Prevent scrollbars */
+            touch-action: manipulation; /* Prevent double-tap zoom on mobile */
+        }
+        canvas {
+            display: block;
+            background-color: #161625; /* Slightly lighter space blue */
+            border: 2px solid #4a4a7f; /* Purple border */
+            box-shadow: 0 0 20px rgba(74, 74, 127, 0.5);
+        }
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.9em;
+            max-width: 80%;
+            pointer-events: none; /* Don't block clicks on canvas */
+        }
+         /* Styles for game over screen elements (handled in JS) */
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: #fff;
+            font-size: 1.5em;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            pointer-events: none; /* Initially not interactive */
+        }
+        .game-overlay.visible {
+            opacity: 1;
+            pointer-events: auto; /* Make interactive when visible */
+        }
+        .game-overlay h1 {
+            margin-bottom: 10px;
+            font-size: 2em;
+            color: #ff6b6b; /* Reddish color for Game Over */
+        }
+        .game-overlay p {
+            margin: 5px 0;
+        }
+        .game-overlay .restart-text {
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: #cccccc;
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        Hold Click / Touch to Expand Orbit<br>Release to Contract Orbit<br>Avoid the Incoming Shards!
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameOverScreen" class="game-overlay">
+        <h1>Game Over</h1>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <p class="restart-text">Click or Tap to Restart</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const instructionsDiv = document.getElementById('instructions');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreSpan = document.getElementById('finalScore');
+
+        let canvasSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.9, 600);
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+        const center = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        // --- Game Constants ---
+        const PLAYER_BASE_RADIUS = canvasSize * 0.02;
+        const ORBIT_MIN_RADIUS = canvasSize * 0.15;
+        const ORBIT_MAX_RADIUS = canvasSize * 0.4;
+        const ORBIT_CHANGE_SPEED = 0.1; // Lerp factor for radius change
+        const PLAYER_ANGULAR_SPEED = 0.02; // Radians per frame
+
+        const SHARD_BASE_SIZE = canvasSize * 0.015;
+        const SHARD_BASE_SPEED = canvasSize * 0.002;
+        const SHARD_SPAWN_INTERVAL_START = 1000; // ms
+        const SHARD_SPAWN_INTERVAL_MIN = 150; // ms
+        const SHARD_SPEED_MAX = canvasSize * 0.006;
+        const DIFFICULTY_INCREASE_RATE = 0.999; // Multiplier for spawn interval per frame
+        const SPEED_INCREASE_FACTOR = 1.0001; // Multiplier for shard speed per frame
+
+        const CENTER_PULSE_MIN = canvasSize * 0.04;
+        const CENTER_PULSE_MAX = canvasSize * 0.05;
+        const CENTER_PULSE_SPEED = 0.03;
+
+        // --- Game State ---
+        let player = {
+            angle: 0,
+            currentRadius: ORBIT_MIN_RADIUS,
+            targetRadius: ORBIT_MIN_RADIUS,
+            size: PLAYER_BASE_RADIUS,
+            color: '#4d90f0', // Light blue
+            x: 0, // Calculated in update
+            y: 0  // Calculated in update
+        };
+
+        let shards = [];
+        let score = 0;
+        let highScore = localStorage.getItem('orbitalOddityHighScore') || 0;
+        let gameState = 'start'; // 'start', 'playing', 'gameOver'
+        let isExpanding = false;
+        let lastSpawnTime = 0;
+        let currentSpawnInterval = SHARD_SPAWN_INTERVAL_START;
+        let currentShardSpeed = SHARD_BASE_SPEED;
+        let centerPulseRadius = CENTER_PULSE_MIN;
+        let centerPulseDirection = 1;
+
+        // --- Game Loop ---
+        let animationFrameId;
+        function gameLoop(timestamp) {
+            if (gameState === 'playing') {
+                update(timestamp);
+                draw();
+                animationFrameId = requestAnimationFrame(gameLoop);
+            } else if (gameState === 'gameOver') {
+                // Handled by overlay display
+            } else if (gameState === 'start') {
+                // Draw initial state but don't update game logic
+                 draw(); // Draw initial state (player at min orbit, score 0)
+                 // Could add a "Click to Start" prompt on canvas here if desired
+                 animationFrameId = requestAnimationFrame(gameLoop); // Keep drawing background
+            }
+        }
+
+        // --- Update Logic ---
+        function update(timestamp) {
+            // --- Player Update ---
+            // Smoothly transition radius
+            player.currentRadius += (player.targetRadius - player.currentRadius) * ORBIT_CHANGE_SPEED;
+            // Update angle for orbital motion
+            player.angle += PLAYER_ANGULAR_SPEED;
+            if (player.angle > Math.PI * 2) {
+                player.angle -= Math.PI * 2;
+            }
+            // Calculate cartesian coordinates
+            player.x = center.x + Math.cos(player.angle) * player.currentRadius;
+            player.y = center.y + Math.sin(player.angle) * player.currentRadius;
+
+            // --- Shard Spawning ---
+            if (timestamp - lastSpawnTime > currentSpawnInterval) {
+                spawnShard();
+                lastSpawnTime = timestamp;
+                // Increase difficulty (make interval shorter, speed faster)
+                currentSpawnInterval = Math.max(SHARD_SPAWN_INTERVAL_MIN, currentSpawnInterval * DIFFICULTY_INCREASE_RATE);
+                currentShardSpeed = Math.min(SHARD_SPEED_MAX, currentShardSpeed * SPEED_INCREASE_FACTOR);
+            }
+
+            // --- Shard Update & Collision ---
+            for (let i = shards.length - 1; i >= 0; i--) {
+                const shard = shards[i];
+                // Move shard towards center
+                const dx = center.x - shard.x;
+                const dy = center.y - shard.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > shard.size / 2) { // Don't divide by zero if at center
+                    shard.x += (dx / dist) * shard.speed;
+                    shard.y += (dy / dist) * shard.speed;
+                }
+
+                // Collision check with player
+                const playerDistX = player.x - shard.x;
+                const playerDistY = player.y - shard.y;
+                const playerDist = Math.sqrt(playerDistX * playerDistX + playerDistY * playerDistY);
+
+                if (playerDist < player.size + shard.size) {
+                    gameOver();
+                    return; // Stop update loop immediately
+                }
+
+                // Remove shards that reach the center (or very close)
+                if (dist < shard.size) {
+                    shards.splice(i, 1);
+                    // Increase score slightly for shards avoided (optional)
+                    // score += 1; // Or maybe increase score purely on time
+                }
+            }
+
+            // --- Score Update ---
+            score++; // Simple time-based score
+
+            // --- Center Pulse ---
+            centerPulseRadius += centerPulseDirection * CENTER_PULSE_SPEED;
+            if (centerPulseRadius > CENTER_PULSE_MAX || centerPulseRadius < CENTER_PULSE_MIN) {
+                centerPulseDirection *= -1;
+                 centerPulseRadius = Math.max(CENTER_PULSE_MIN, Math.min(CENTER_PULSE_MAX, centerPulseRadius)); // Clamp value
+            }
+        }
+
+        // --- Drawing Logic ---
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#161625'; // Background
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+             // Draw Center "Gravity Well" / Pulse
+            ctx.fillStyle = '#2a2a4e'; // Darker purple
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, centerPulseRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#4a4a7f'; // Border color
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+
+            // Draw Orbit Paths (visual guides)
+            ctx.strokeStyle = 'rgba(74, 74, 127, 0.3)'; // Faint purple
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, ORBIT_MIN_RADIUS, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, ORBIT_MAX_RADIUS, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Draw Shards
+            ctx.fillStyle = '#ff6b6b'; // Reddish color for danger
+            shards.forEach(shard => {
+                ctx.beginPath();
+                // Draw simple triangle/shard shape
+                ctx.save();
+                ctx.translate(shard.x, shard.y);
+                ctx.rotate(shard.angle); // Rotate shard to point inwards
+                ctx.moveTo(0, -shard.size);
+                ctx.lineTo(-shard.size / 2, shard.size / 2);
+                ctx.lineTo(shard.size / 2, shard.size / 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+
+                // Alternative simple circle shard:
+                // ctx.arc(shard.x, shard.y, shard.size, 0, Math.PI * 2);
+                // ctx.fill();
+            });
+
+            // Draw Player
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+            ctx.fill();
+             // Add a subtle outline to player
+             ctx.strokeStyle = '#cceeff';
+             ctx.lineWidth = 1;
+             ctx.stroke();
+
+
+            // Draw Score & High Score
+            ctx.fillStyle = '#e0e0e0';
+            ctx.font = `${canvasSize * 0.04}px 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 20, 40);
+             ctx.textAlign = 'right';
+            ctx.fillText(`High: ${highScore}`, canvas.width - 20, 40);
+        }
+
+        // --- Helper Functions ---
+        function spawnShard() {
+            const angle = Math.random() * Math.PI * 2;
+            const spawnDist = canvasSize * 0.6; // Start slightly outside max orbit + buffer
+            const shard = {
+                x: center.x + Math.cos(angle) * spawnDist,
+                y: center.y + Math.sin(angle) * spawnDist,
+                size: SHARD_BASE_SIZE * (0.8 + Math.random() * 0.4), // Slightly variable size
+                speed: currentShardSpeed * (0.9 + Math.random() * 0.2), // Slightly variable speed
+                angle: Math.atan2(center.y - (center.y + Math.sin(angle) * spawnDist), center.x - (center.x + Math.cos(angle) * spawnDist)) // Angle pointing towards center
+            };
+            shards.push(shard);
+        }
+
+        function gameOver() {
+            gameState = 'gameOver';
+            cancelAnimationFrame(animationFrameId); // Stop the game loop
+
+            // Update high score if needed
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('orbitalOddityHighScore', highScore);
+            }
+
+            // Show Game Over Screen
+            finalScoreSpan.textContent = score;
+            gameOverScreen.classList.add('visible');
+            instructionsDiv.style.display = 'none'; // Hide instructions
+        }
+
+        function resetGame() {
+            score = 0;
+            player.angle = 0;
+            player.currentRadius = ORBIT_MIN_RADIUS;
+            player.targetRadius = ORBIT_MIN_RADIUS;
+            shards = [];
+            lastSpawnTime = 0;
+            currentSpawnInterval = SHARD_SPAWN_INTERVAL_START;
+            currentShardSpeed = SHARD_BASE_SPEED;
+            isExpanding = false;
+            centerPulseRadius = CENTER_PULSE_MIN;
+            centerPulseDirection = 1;
+
+            gameOverScreen.classList.remove('visible');
+            instructionsDiv.style.display = 'block'; // Show instructions again
+
+             // Need a small delay before starting game loop again if triggered by click/touch
+            setTimeout(() => {
+                if (gameState !== 'playing') { // Prevent race condition if clicked rapidly
+                    gameState = 'playing';
+                    gameLoop(performance.now());
+                }
+            }, 50); // Small delay to ensure screen is hidden before loop starts
+        }
+
+        function startGame() {
+            if (gameState === 'start') {
+                 gameState = 'playing';
+                 instructionsDiv.style.display = 'none'; // Hide instructions during play
+                 // Initial setup before first loop if needed (already done mostly)
+                 lastSpawnTime = performance.now(); // Start spawn timer now
+                 if (!animationFrameId) { // Ensure loop starts if it wasn't running
+                    gameLoop(performance.now());
+                 }
+            }
+        }
+
+        // --- Event Listeners ---
+        function handleInteractionStart(e) {
+             e.preventDefault(); // Prevent default touch behavior (scrolling, zoom)
+            if (gameState === 'playing') {
+                player.targetRadius = ORBIT_MAX_RADIUS;
+                isExpanding = true;
+            } else if (gameState === 'start') {
+                 startGame();
+                 player.targetRadius = ORBIT_MAX_RADIUS; // Start expanding immediately on first touch/click
+                isExpanding = true;
+            }
+        }
+
+        function handleInteractionEnd(e) {
+             e.preventDefault();
+            if (gameState === 'playing' && isExpanding) {
+                player.targetRadius = ORBIT_MIN_RADIUS;
+                isExpanding = false;
+            }
+             // If player releases while still in 'start' state, ensure target is min radius
+             else if (gameState === 'start') {
+                  player.targetRadius = ORBIT_MIN_RADIUS;
+                  isExpanding = false;
+             }
+        }
+
+        canvas.addEventListener('mousedown', handleInteractionStart);
+        canvas.addEventListener('mouseup', handleInteractionEnd);
+        canvas.addEventListener('mouseleave', handleInteractionEnd); // Stop expanding if mouse leaves canvas
+
+        canvas.addEventListener('touchstart', handleInteractionStart, { passive: false });
+        canvas.addEventListener('touchend', handleInteractionEnd, { passive: false });
+        canvas.addEventListener('touchcancel', handleInteractionEnd, { passive: false }); // Handle interruptions
+
+        // Restart listener on the overlay
+         gameOverScreen.addEventListener('click', resetGame);
+         gameOverScreen.addEventListener('touchstart', (e) => {
+             e.preventDefault(); // Prevent click firing too
+             resetGame();
+         }, { passive: false });
+
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            // Simple approach: just reload the page on resize to rescale everything.
+            // More complex: recalculate all positions/sizes based on new canvasSize.
+            // Reloading is easier for this single-file constraint setup.
+            // However, reloading loses state (score). Let's try a soft reset instead.
+
+             canvasSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.9, 600);
+             canvas.width = canvasSize;
+             canvas.height = canvasSize;
+             center.x = canvas.width / 2;
+             center.y = canvas.height / 2;
+
+             // Re-calculate constants based on new size (minimal set for now)
+             player.size = PLAYER_BASE_RADIUS = canvasSize * 0.02;
+             // ORBIT_MIN_RADIUS = canvasSize * 0.15; // These affect gameplay, maybe don't change live?
+             // ORBIT_MAX_RADIUS = canvasSize * 0.4;
+
+             // Reset game state to avoid weirdness with scaling? Or just redraw?
+             // For simplicity let's just redraw the current state if playing,
+             // otherwise, ensure the start/game over screens look okay.
+             if(gameState === 'playing' || gameState === 'start') {
+                draw();
+             } else if (gameState === 'gameOver'){
+                 // Update score display position potentially needed if not centered via CSS
+                 // Overlay is centered via CSS, so should be fine.
+             }
+
+             // Ideally, you'd scale all dynamic elements (shards, player radius based on MIN/MAX constants)
+             // but this adds significant complexity. The current approach might have minor visual glitches
+             // on resize during gameplay but keeps the core logic simpler.
+             console.log("Resized - canvas size:", canvasSize);
+        });
+
+        // --- Initial Draw ---
+        console.log("Orbital Oddity: Initializing...");
+        // Initialize with 'start' state visual
+        gameState = 'start'; // Explicitly set start state
+        player.currentRadius = ORBIT_MIN_RADIUS; // Ensure player starts visually at min orbit
+        player.targetRadius = ORBIT_MIN_RADIUS;
+        update(0); // Calculate initial player x,y for first draw
+        draw(); // Draw the initial screen
+        console.log("Game ready. Click/Tap canvas to start.");
+
+    </script>
+</body>
+</html>

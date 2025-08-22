@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Flappy Dragon</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #000;
+            overflow: hidden;
+        }
+        canvas {
+            background: #87CEEB; /* Sky blue */
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game" width="400" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        let dragon = { x: 50, y: 300, vy: 0, width: 40, height: 25 };
+        let gravity = 0.4;
+        let lift = -7;
+        let pipes = [];
+        let pipeGap = 160;
+        let pipeWidth = 60;
+        let pipeSpeed = 2;
+        let score = 0;
+        let gameOver = true;
+        let highScore = localStorage.getItem('flappyDragonHighScore') || 0;
+        let frame = 0;
+        let fireCooldown = 0;
+        let maxCooldown = 60; // Fire every 1-2 seconds roughly
+        let fires = [];
+        let lastGameOver = false; // To detect when gameOver becomes true
+
+        function drawDragon() {
+            ctx.fillStyle = '#FF4500'; // Orange-red for dragon
+            ctx.beginPath();
+            ctx.moveTo(dragon.x, dragon.y + dragon.height / 2);
+            ctx.lineTo(dragon.x + dragon.width, dragon.y);
+            ctx.lineTo(dragon.x + dragon.width, dragon.y + dragon.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eye
+            ctx.fillStyle = '#FFF';
+            ctx.beginPath();
+            ctx.arc(dragon.x + dragon.width - 10, dragon.y + dragon.height / 2 - 5, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawPipe(pipe) {
+            ctx.fillStyle = '#228B22'; // Forest green for pipes
+            ctx.fillRect(pipe.x, 0, pipeWidth, pipe.top);
+            ctx.fillRect(pipe.x, canvas.height - pipe.bottom, pipeWidth, pipe.bottom);
+        }
+
+        function drawFire(f) {
+            ctx.fillStyle = '#FFD700'; // Gold for fire
+            ctx.beginPath();
+            ctx.moveTo(f.x, f.y + 2.5);
+            ctx.lineTo(f.x + 15, f.y);
+            ctx.lineTo(f.x + 15, f.y + 5);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawBackground() {
+            // Simple clouds for polish
+            ctx.fillStyle = '#FFF';
+            ctx.beginPath();
+            ctx.arc(100, 100, 30, 0, Math.PI * 2);
+            ctx.arc(130, 100, 40, 0, Math.PI * 2);
+            ctx.arc(160, 100, 30, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(300, 200, 25, 0, Math.PI * 2);
+            ctx.arc(330, 200, 35, 0, Math.PI * 2);
+            ctx.arc(360, 200, 25, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function update() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+
+            if (gameOver) {
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 30px Arial';
+                ctx.fillText('Flappy Dragon', 70, 200);
+                ctx.font = '20px Arial';
+                ctx.fillText('Score: ' + score, 140, 250);
+                ctx.fillText('High Score: ' + highScore, 120, 280);
+                ctx.fillText('Press Space to Start', 80, 320);
+                ctx.fillText('Space: Flap | F: Fire', 90, 350);
+                return;
+            }
+
+            // Dragon physics
+            dragon.vy += gravity;
+            dragon.y += dragon.vy;
+
+            // Bounds check
+            if (dragon.y + dragon.height > canvas.height || dragon.y < 0) {
+                gameOver = true;
+            }
+
+            drawDragon();
+
+            // Fires update
+            for (let i = fires.length - 1; i >= 0; i--) {
+                fires[i].x += 4;
+                if (fires[i].x > canvas.width) {
+                    fires.splice(i, 1);
+                } else {
+                    drawFire(fires[i]);
+                }
+            }
+
+            // Pipes update
+            if (frame % 90 === 0) { // Adjust for difficulty
+                let top = Math.floor(Math.random() * (canvas.height - pipeGap - 200) + 100);
+                pipes.push({ x: canvas.width, top: top, bottom: canvas.height - top - pipeGap, scored: false });
+            }
+
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= pipeSpeed;
+                if (pipes[i].x + pipeWidth < 0) {
+                    pipes.splice(i, 1);
+                    continue;
+                }
+
+                drawPipe(pipes[i]);
+
+                // Dragon-pipe collision
+                if (
+                    dragon.x + dragon.width > pipes[i].x &&
+                    dragon.x < pipes[i].x + pipeWidth &&
+                    (dragon.y < pipes[i].top || dragon.y + dragon.height > canvas.height - pipes[i].bottom)
+                ) {
+                    gameOver = true;
+                }
+
+                // Score if passed
+                if (!pipes[i].scored && pipes[i].x + pipeWidth < dragon.x) {
+                    score++;
+                    pipes[i].scored = true;
+                }
+
+                // Fire-pipe collision
+                for (let j = fires.length - 1; j >= 0; j--) {
+                    if (
+                        fires[j].x + 15 > pipes[i].x &&
+                        fires[j].x < pipes[i].x + pipeWidth &&
+                        (fires[j].y < pipes[i].top || fires[j].y > canvas.height - pipes[i].bottom)
+                    ) {
+                        pipes.splice(i, 1);
+                        fires.splice(j, 1);
+                        break;
+                    }
+                }
+            }
+
+            // Cooldown
+            if (fireCooldown > 0) fireCooldown--;
+
+            // Draw score
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('Score: ' + score, 10, 30);
+
+            // Check for new high score on game over
+            if (gameOver && !lastGameOver) {
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('flappyDragonHighScore', highScore);
+                }
+                lastGameOver = true;
+            } else if (!gameOver) {
+                lastGameOver = false;
+            }
+
+            frame++;
+        }
+
+        function keyDown(e) {
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                if (gameOver) {
+                    startGame();
+                } else {
+                    dragon.vy = lift;
+                }
+            } else if (e.key.toLowerCase() === 'f' && !gameOver && fireCooldown <= 0) {
+                fires.push({ x: dragon.x + dragon.width, y: dragon.y + dragon.height / 2 });
+                fireCooldown = maxCooldown;
+            }
+        }
+
+        function startGame() {
+            dragon.y = 300;
+            dragon.vy = 0;
+            pipes = [];
+            fires = [];
+            score = 0;
+            gameOver = false;
+            frame = 0;
+            fireCooldown = 0;
+            pipeSpeed = 2; // Reset speed if you want progressive difficulty, but keep constant for now
+        }
+
+        document.addEventListener('keydown', keyDown);
+
+        function gameLoop() {
+            update();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

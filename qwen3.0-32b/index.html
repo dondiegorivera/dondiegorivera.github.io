@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flappy Bird Game</title>
+    <style>
+        #gameCanvas {
+            border: 1px solid black;
+        }
+        #scoreDisplay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: Arial, sans-serif;
+            font-size: 30px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="scoreDisplay">0</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let score = 0;
+        const bird = {
+            x: 50,
+            y: 300,
+            radius: 15,
+            velocity: 0,
+            gravity: 0.5,
+            jumpForce: -8
+        };
+        
+        const obstacles = [];
+        const powerUps = [];
+        let gameOver = false;
+
+        function drawBird() {
+            ctx.beginPath();
+            ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'yellow';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function createObstacle() {
+            const gapHeight = 150;
+            const obstacleWidth = 80;
+            const minHeight = 50;
+            const maxHeight = canvas.height - gapHeight - minHeight;
+            const height = Math.floor(Math.random() * (maxHeight - minHeight) + minHeight);
+            
+            obstacles.push({
+                x: canvas.width,
+                y: 0,
+                width: obstacleWidth,
+                height: height
+            });
+            
+            obstacles.push({
+                x: canvas.width,
+                y: height + gapHeight,
+                width: obstacleWidth,
+                height: canvas.height - height - gapHeight
+            });
+        }
+
+        function drawObstacles() {
+            ctx.fillStyle = 'green';
+            obstacles.forEach(obs => {
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            });
+        }
+
+        function createPowerUp() {
+            const type = Math.random() < 0.5 ? 'score' : 'boost';
+            powerUps.push({
+                x: canvas.width,
+                y: Math.random() * (canvas.height - 30) + 15,
+                radius: 10,
+                type: type
+            });
+        }
+
+        function drawPowerUps() {
+            powerUps.forEach(pu => {
+                ctx.beginPath();
+                ctx.arc(pu.x, pu.y, pu.radius, 0, Math.PI * 2);
+                ctx.fillStyle = pu.type === 'score' ? 'blue' : 'red';
+                ctx.fill();
+                ctx.closePath();
+            });
+        }
+
+        function checkCollision() {
+            if (bird.y - bird.radius < 0 || bird.y + bird.radius > canvas.height) return true;
+            
+            for (const obs of obstacles) {
+                if (bird.x + bird.radius > obs.x && 
+                    bird.x - bird.radius < obs.x + obs.width &&
+                    bird.y + bird.radius > obs.y &&
+                    bird.y - bird.radius < obs.y + obs.height) {
+                    return true;
+                }
+            }
+
+            const puIndex = powerUps.findIndex(pu => 
+                Math.sqrt((bird.x - pu.x)**2 + (bird.y - pu.y)**2) < bird.radius + pu.radius
+            );
+            
+            if (puIndex !== -1) {
+                const pu = powerUps[puIndex];
+                if (pu.type === 'score') score += 50;
+                else bird.velocity = -10;
+                powerUps.splice(puIndex, 1);
+            }
+
+            return false;
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            // Bird physics
+            bird.velocity += bird.gravity;
+            bird.y += bird.velocity;
+
+            // Update obstacles and power-ups
+            obstacles.forEach(obs => obs.x -= 2);
+            powerUps.forEach(pu => pu.x -= 2);
+
+            // Remove off-screen elements
+            obstacles.filter(obs => obs.x + obs.width > 0);
+            powerUps.filter(pu => pu.x + pu.radius > 0);
+
+            // Create new obstacles and power-ups
+            if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < canvas.width - 200) {
+                createObstacle();
+            }
+            if (Math.random() < 0.02) { // 2% chance per frame to create a power-up
+                createPowerUp();
+            }
+
+            // Check collisions
+            if (checkCollision()) {
+                gameOver = true;
+                return;
+            }
+
+            // Update score display
+            document.getElementById('scoreDisplay').textContent = score;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (!gameOver) {
+                drawObstacles();
+                drawBird();
+                drawPowerUps();
+            }
+            
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !gameOver) {
+                bird.velocity = bird.jumpForce;
+            }
+        });
+
+        // Start the game
+        draw();
+    </script>
+</body>
+</html>

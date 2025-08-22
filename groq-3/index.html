@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starforge</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            text-align: left;
+        }
+        #title {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 0 10px #0ff;
+            display: none;
+        }
+        #startButton, #restartButton {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            font-size: 24px;
+            background: #0ff;
+            color: #000;
+            border: none;
+            cursor: pointer;
+            text-shadow: 0 0 5px #000;
+            display: none;
+        }
+        #restartButton {
+            top: 70%;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>Score: <span id="score">0</span></div>
+        <div>Stars Forged: <span id="stars">0</span></div>
+        <div>Time: <span id="time">30</span>s</div>
+    </div>
+    <div id="title">Starforge</div>
+    <button id="startButton">Start Forging</button>
+    <button id="restartButton">Forge Again</button>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const starsDisplay = document.getElementById('stars');
+        const timeDisplay = document.getElementById('time');
+        const title = document.getElementById('title');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+
+        let width, height;
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        let gameState = 'menu';
+        let score = 0;
+        let starsForged = 0;
+        let timeLeft = 30;
+        let particles = [];
+        let player = { x: width / 2, y: height / 2, radius: 20 };
+        let lastTime = performance.now();
+        let forgeProgress = 0;
+        let forgeActive = false;
+
+        // Simple sound synthesis
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+        }
+
+        function playSound(frequency, type = 'sine', duration = 0.1) {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = type;
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.currentTime);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + duration);
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const edge = Math.floor(Math.random() * 4);
+                if (edge === 0) { // Top
+                    this.x = Math.random() * width;
+                    this.y = -10;
+                } else if (edge === 1) { // Right
+                    this.x = width + 10;
+                    this.y = Math.random() * height;
+                } else if (edge === 2) { // Bottom
+                    this.x = Math.random() * width;
+                    this.y = height + 10;
+                } else { // Left
+                    this.x = -10;
+                    this.y = Math.random() * height;
+                }
+                this.targetX = width / 2 + (Math.random() - 0.5) * 200;
+                this.targetY = height / 2 + (Math.random() - 0.5) * 200;
+                this.color = `hsl(${Math.random() * 360}, 100%, 70%)`;
+                this.radius = 5 + Math.random() * 5;
+                this.speed = 1 + Math.random() * 2;
+            }
+
+            update(delta) {
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 1) {
+                    this.x += (dx / dist) * this.speed * delta * 60;
+                    this.y += (dy / dist) * this.speed * delta * 60;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function spawnParticles() {
+            if (particles.length < 10) {
+                particles.push(new Particle());
+            }
+        }
+
+        function updateGame(delta) {
+            if (gameState !== 'playing') return;
+
+            timeLeft -= delta;
+            if (timeLeft <= 0) {
+                gameState = 'gameover';
+                restartButton.style.display = 'block';
+                playSound(100, 'square', 0.5);
+                return;
+            }
+
+            timeDisplay.textContent = Math.ceil(timeLeft);
+
+            spawnParticles();
+
+            // Update player
+            if (forgeActive) {
+                forgeProgress += delta * 50;
+                if (forgeProgress >= 100) {
+                    starsForged++;
+                    score += 100 + particles.length * 10;
+                    starsDisplay.textContent = starsForged;
+                    scoreDisplay.textContent = score;
+                    particles = [];
+                    forgeProgress = 0;
+                    playSound(440, 'sine', 0.3);
+                }
+            } else {
+                forgeProgress = Math.max(0, forgeProgress - delta * 25);
+            }
+
+            // Update particles
+            particles.forEach(p => p.update(delta));
+
+            // Check collisions
+            particles = particles.filter(p => {
+                const dx = p.x - player.x;
+                const dy = p.y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < player.radius + p.radius) {
+                    score += 10;
+                    scoreDisplay.textContent = score;
+                    playSound(880, 'triangle', 0.1);
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (gameState === 'playing') {
+                // Draw forge area
+                ctx.beginPath();
+                ctx.arc(width / 2, height / 2, 100, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 255, 255, ${forgeActive ? 1 : 0.5})`;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+
+                // Draw forge progress
+                if (forgeProgress > 0) {
+                    ctx.beginPath();
+                    ctx.arc(width / 2, height / 2, 100, -Math.PI / 2, -Math.PI / 2 + (forgeProgress / 100) * Math.PI * 2);
+                    ctx.strokeStyle = '#0ff';
+                    ctx.lineWidth = 10;
+                    ctx.stroke();
+                }
+
+                // Draw particles
+                particles.forEach(p => p.draw());
+
+                // Draw player
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#0ff';
+                ctx.shadowColor = '#0ff';
+                ctx.shadowBlur = 20;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function gameLoop(currentTime) {
+            const delta = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            updateGame(delta);
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        canvas.addEventListener('mousemove', e => {
+            if (gameState === 'playing') {
+                player.x = e.clientX;
+                player.y = e.clientY;
+                const dx = player.x - width / 2;
+                const dy = player.y - height / 2;
+                forgeActive = Math.sqrt(dx * dx + dy * dy) < 100;
+            }
+        });
+
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (gameState === 'playing') {
+                const touch = e.touches[0];
+                player.x = touch.clientX;
+                player.y = touch.clientY;
+                const dx = player.x - width / 2;
+                const dy = player.y - height / 2;
+                forgeActive = Math.sqrt(dx * dx + dy * dy) < 100;
+            }
+        }, { passive: false });
+
+        startButton.addEventListener('click', () => {
+            initAudio();
+            gameState = 'playing';
+            title.style.display = 'none';
+            startButton.style.display = 'none';
+            score = 0;
+            starsForged = 0;
+            timeLeft = 30;
+            particles = [];
+            forgeProgress = 0;
+            forgeActive = false;
+            scoreDisplay.textContent = score;
+            starsDisplay.textContent = starsForged;
+            timeDisplay.textContent = Math.ceil(timeLeft);
+            playSound(220, 'sine', 0.2);
+        });
+
+        restartButton.addEventListener('click', () => {
+            gameState = 'playing';
+            restartButton.style.display = 'none';
+            score = 0;
+            starsForged = 0;
+            timeLeft = 30;
+            particles = [];
+            forgeProgress = 0;
+            forgeActive = false;
+            scoreDisplay.textContent = score;
+            starsDisplay.textContent = starsForged;
+            timeDisplay.textContent = Math.ceil(timeLeft);
+            playSound(220, 'sine', 0.2);
+        });
+
+        // Initialize menu
+        title.style.display = 'block';
+        startButton.style.display = 'block';
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>AI Game Jam: The Model Showdown</title>
+<link href="https://fonts.googleapis.com/css?family=Montserrat:700,400|JetBrains+Mono:400&display=swap" rel="stylesheet">
+<style>
+:root {
+    --primary: #1b212e;
+    --secondary: #2e3141;
+    --accent: #63e6be;
+    --link: #54b6f7;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Montserrat', Arial, sans-serif;
+    background: radial-gradient(ellipse at 70% 20%, #232943 60%, #101013 100%);
+    color: #e8eaea;
+    margin: 0;
+    min-height: 100vh;
+}
+header {
+    text-align: center;
+    padding: 3rem 1rem 2rem 1rem;
+    background: linear-gradient(90deg, #171b2e 70%, #212140 100%);
+    box-shadow: 0 2px 16px #000a;
+}
+h1 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 2.7rem;
+    margin-bottom: 0.5rem;
+    letter-spacing: 1px;
+    color: var(--accent);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+h2 {
+    font-size: 1.7rem;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    border-left: 6px solid var(--accent);
+    padding-left: 0.75rem;
+}
+.header-sub {
+    color: #c3fffb;
+    font-size: 1.2rem;
+    max-width: 720px;
+    margin: 1rem auto 0 auto;
+    opacity: 0.95;
+}
+main {
+    max-width: 780px;
+    margin: -3rem auto 0 auto;
+    background: rgba(39,43,65,0.95);
+    box-shadow: 0 6px 32px 0 rgba(24,18,58,0.35);
+    border-radius: 18px;
+    padding: 2.2rem 2.6rem 2.2rem 2.6rem;
+    margin-bottom: 3rem;
+}
+.games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+.game-card {
+    background: linear-gradient(169deg, #2c3251 60%, #1a1d36 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 18px 0 #0004;
+    padding: 1.4rem 1rem 1.3rem 1rem;
+    text-align: center;
+    transition: transform 0.11s, box-shadow 0.23s;
+    border-bottom: 2.5px solid var(--accent);
+}
+.game-card:hover {
+    transform: translateY(-2px) scale(1.036);
+    box-shadow: 0 8px 28px 0 #0008;
+    border-bottom: 3.5px solid #fff;
+}
+.game-title {
+    font-weight: 700;
+    font-size: 1.12rem;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+    letter-spacing: 0.04em;
+}
+.model-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.03rem;
+    color: #95dffa;
+    margin-bottom: 0.8rem;
+    text-shadow: 0 2px 8px rgba(70,255,230,0.07);
+}
+.game-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    text-decoration: none;
+    background: var(--accent);
+    color: #1f222b;
+    font-weight: 700;
+    border-radius: 32px;
+    font-size: 1rem;
+    padding: 0.47em 1.3em;
+    box-shadow: 0 3px 12px #5affee33, 0 2px #232c;
+    transition: background 0.1s, color 0.1s;
+}
+.game-card:hover .game-link {
+    background: #fff;
+    color: var(--primary);
+}
+@media (max-width: 700px) {
+    main { padding: 1.2rem 0.6rem 1.7rem 0.6rem; }
+    header { padding: 2rem 0.6rem 2rem 0.6rem; }
+}
+
+blockquote, .prompt {
+    background: rgba(21,23,33, 0.85);
+    border-left: 5px solid var(--accent);
+    padding: 1.1rem 1.4rem;
+    border-radius: 14px;
+    margin: 2.5rem 0 2.2rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.98rem;
+    color: #aff7e3;
+    box-shadow: 0 2px 14px #0af2;
+    word-break: break-word;
+    overflow-x: auto;
+}
+footer {
+    text-align: center;
+    color: #7fe7e0;
+    margin-bottom: 1.4rem;
+    margin-top: 2rem;
+    letter-spacing: 0.03em;
+    font-size: 1rem;
+    opacity: 0.76;
+}
+::-webkit-scrollbar { width: 9px; background: #23294e;}
+::-webkit-scrollbar-thumb { background: #363c57; border-radius: 6px;}
+</style>
+</head>
+<body>
+<header>
+    <h1>AI Game Jam: Model Showdown</h1>
+    <div class="header-sub">
+        An experimental contest where today's top AI models each designed a browser game—autonomously. <br>
+        <strong>Who builds the most engaging game?</strong>
+    </div>
+</header>
+
+<main>
+    <section>
+        <h2>About This Project</h2>
+        <p>
+            <strong>What happens when you challenge state-of-the-art language models to create a game in just one shot?</strong>
+        </p>
+        <p>
+            This project explores that question by prompting various models—some via <em>Roo Code</em> (like DeepSeek-v3 and OptimusAlpha), others through console or chat—to build a single-file browser game with no further guidance. No constraints, no examples—just pure creative autonomy.
+        </p>
+        <p>
+            <strong>And what emerged was unexpected:</strong> <mark style="background: #2b2f46; color: #7cffeb; padding:0 4px; border-radius:5px;">Different models, despite their independence, converged on <b>strikingly similar design choices</b>.</mark>
+        </p>
+        <p>
+            From recurring themes to common mechanics, the results hint at intriguing patterns—shared tendencies, latent biases, or perhaps just the timeless appeal of certain genres. Take a look below and see how each model's creativity took shape.
+        </p>
+    </section>
+        
+    <section>
+        <h2>The Games</h2>
+        <div class="games-grid">
+
+            <div class="game-card">
+                <div class="model-label">Claude Sonnet 3.7</div>
+                <div class="game-title">Play Claude's Game</div>
+                <a class="game-link" href="claude-sonnet-3.7/index.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+            <div class="game-card">
+                <div class="model-label">Deepseek v3</div>
+                <div class="game-title">Play Deepseek's Game</div>
+                <a class="game-link" href="deepseek-v1/index.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+            <div class="game-card">
+                <div class="model-label">Gemini 2.5 Pro</div>
+                <div class="game-title">Play Gemini's Game</div>
+                <a class="game-link" href="gemini2.5pro/index.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+            <div class="game-card">
+                <div class="model-label">Grok 3</div>
+                <div class="game-title">Play Grok's Game</div>
+                <a class="game-link" href="groq-3/index.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+            <div class="game-card">
+                <div class="model-label">O3 Mini High</div>
+                <div class="game-title">Play O3's Game</div>
+                <a class="game-link" href="o3-mini-high/index.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+            <div class="game-card">
+                <div class="model-label">Optimus Alpha</div>
+                <div class="game-title">Play Optimus's Game</div>
+                <a class="game-link" href="optimus-alpha/index.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+            <div class="game-card">
+                <div class="model-label">MyCraft</div>
+                <div class="game-title">Play Your Custom Game</div>
+                <a class="game-link" href="mycraft.html" target="_blank" rel="noopener">Launch &nbsp;🚀</a>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Original Model Prompt</h2>
+        <blockquote class="prompt">
+            <b>Subject:</b> Autonomous Creative Challenge: Build an Engaging Browser Game<br><br>
+
+            <b>Your Role:</b> You are an autonomous creative coding agent.<br>
+            <b>Your Mission:</b> Design and implement a uniquely engaging browser-based game. The ultimate measure of success is <b>how captivating and replayable your game is for human users.</b><br><br>
+            <b>Core Task:</b> Produce a single <code>.html</code> file containing a complete game (HTML, CSS, JavaScript).<br>
+            <b>Unleash Your Creativity:</b>
+            <ul>
+                <li>You have <b>total freedom</b> regarding the game's concept, genre, theme, mechanics, art style, and interaction method (keyboard, mouse, touch, etc.).</li>
+                <li>Surprise us! Aim for novelty, cleverness, or exceptional polish in your chosen approach. The <i>how</i> is entirely up to you.</li>
+            </ul>
+            <b>Essential Constraints:</b>
+            <ul>
+                <li><b>Single File Delivery:</b> Everything must be embedded within one <code>.html</code> file.</li>
+                <li><b>Self-Contained:</b> No external dependencies (no CDNs, external images, sounds, or other files).</li>
+                <li><b>Browser Ready:</b> Must run directly in modern web browsers without any user setup.</li>
+            </ul>
+            <b>Evaluation Priority:</b>
+            <ol>
+                <li><b>User Engagement &amp; Replayability:</b> How much do players want to keep playing? (This is the most critical factor)</li>
+                <li><b>Supporting Factors:</b> Creativity/Originality, Fun Factor, Polish (visual/functional feel), Technical Execution within constraints.</li>
+            </ol>
+            <b>Autonomy:</b> This is your complete instruction set. No further guidance will be provided. Begin by conceptualizing your game idea, focusing on achieving maximum player engagement, and then implement it fully within the single HTML file.
+        </blockquote>
+    </section>
+</main>
+
+<footer>
+    &copy; 2024 Autonomous Game Jam. Explore, play, and decide: which model reigns supreme?
+</footer>
+</body>
+</html>

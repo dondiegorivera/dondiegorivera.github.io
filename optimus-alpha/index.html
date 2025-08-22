@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Orbital Dodge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(ellipse at center, #1a1a2e 0%, #0f3460 100%);
+      overflow: hidden;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      user-select: none;
+    }
+    #gameCanvas {
+      display: block;
+      margin: 0 auto;
+      background: transparent;
+      box-shadow: 0 0 32px #222;
+      border-radius: 12px;
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    #ui {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+    #score, #highscore {
+      color: #fff;
+      text-shadow: 0 2px 8px #000a;
+      font-size: 1.5em;
+      position: absolute;
+      left: 24px;
+      top: 18px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    #highscore {
+      top: 54px;
+      font-size: 1em;
+      color: #ffd700;
+    }
+    #centerText {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      text-align: center;
+      font-size: 2.2em;
+      text-shadow: 0 2px 12px #000c;
+      pointer-events: none;
+      z-index: 3;
+      font-weight: bold;
+      letter-spacing: 2px;
+    }
+    #instructions {
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff9;
+      font-size: 1.1em;
+      text-align: center;
+      text-shadow: 0 2px 8px #000a;
+      z-index: 2;
+      pointer-events: none;
+    }
+    @media (max-width: 600px) {
+      #score, #highscore { left: 12px; font-size: 1.1em; }
+      #centerText { font-size: 1.2em; }
+      #instructions { font-size: 0.95em; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="480" height="640"></canvas>
+  <div id="ui">
+    <div id="score">Score: 0</div>
+    <div id="highscore">High: 0</div>
+    <div id="centerText"></div>
+    <div id="instructions">Tap, click, or press SPACE to reverse orbit. Dodge the asteroids!</div>
+  </div>
+  <script>
+    // --- Game Constants ---
+    const CANVAS_W = 480, CANVAS_H = 640;
+    const SUN_X = CANVAS_W / 2, SUN_Y = CANVAS_H / 2;
+    const ORBIT_RADIUS = 180;
+    const PLANET_RADIUS = 18;
+    const SUN_RADIUS = 38;
+    const ASTEROID_MIN_RADIUS = 14, ASTEROID_MAX_RADIUS = 28;
+    const ASTEROID_MIN_SPEED = 2.2, ASTEROID_MAX_SPEED = 4.5;
+    const ASTEROID_SPAWN_INTERVAL = 900; // ms, decreases over time
+    const ASTEROID_SPAWN_ACCEL = 0.995; // spawn interval multiplier per spawn
+    const ORBIT_SPEED = 1.25; // radians/sec
+    const PARTICLE_COUNT = 18;
+    const PARTICLE_LIFETIME = 0.7; // seconds
+
+    // --- Game State ---
+    let orbitAngle = 0;
+    let orbitDir = 1; // 1 or -1
+    let lastReverse = 0;
+    let asteroids = [];
+    let particles = [];
+    let score = 0;
+    let highscore = 0;
+    let gameState = 'start'; // 'start', 'playing', 'gameover'
+    let asteroidSpawnTimer = 0;
+    let asteroidSpawnInterval = ASTEROID_SPAWN_INTERVAL;
+    let lastFrameTime = 0;
+    let planetColor = '#00f2fe';
+    let planetTrail = [];
+    let planetTrailMax = 16;
+
+    // --- DOM Elements ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDiv = document.getElementById('score');
+    const highscoreDiv = document.getElementById('highscore');
+    const centerTextDiv = document.getElementById('centerText');
+    const instructionsDiv = document.getElementById('instructions');
+
+    // --- Utility Functions ---
+    function randRange(a, b) { return a + Math.random() * (b - a); }
+    function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+    function dist(x1, y1, x2, y2) {
+      return Math.hypot(x2 - x1, y2 - y1);
+    }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    // --- Asteroid Generation ---
+    function spawnAsteroid() {
+      // Spawn from random edge, aim at sun
+      let edge = Math.floor(Math.random() * 4);
+      let x, y;
+      if (edge === 0) { // top
+        x = randRange(40, CANVAS_W - 40);
+        y = -ASTEROID_MAX_RADIUS;
+      } else if (edge === 1) { // right
+        x = CANVAS_W + ASTEROID_MAX_RADIUS;
+        y = randRange(40, CANVAS_H - 40);
+      } else if (edge === 2) { // bottom
+        x = randRange(40, CANVAS_W - 40);
+        y = CANVAS_H + ASTEROID_MAX_RADIUS;
+      } else { // left
+        x = -ASTEROID_MAX_RADIUS;
+        y = randRange(40, CANVAS_H - 40);
+      }
+      let angle = Math.atan2(SUN_Y - y, SUN_X - x);
+      let speed = randRange(ASTEROID_MIN_SPEED, ASTEROID_MAX_SPEED) + score * 0.01;
+      let radius = randRange(ASTEROID_MIN_RADIUS, ASTEROID_MAX_RADIUS);
+      let rot = randRange(0, Math.PI * 2);
+      let rotSpeed = randRange(-1, 1) * 0.02;
+      asteroids.push({
+        x, y, angle, speed, radius, rot, rotSpeed
+      });
+    }
+
+    // --- Particle Effects ---
+    function spawnParticles(x, y, color) {
+      for (let i = 0; i < PARTICLE_COUNT; ++i) {
+        let angle = randRange(0, Math.PI * 2);
+        let speed = randRange(60, 180);
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color,
+          life: PARTICLE_LIFETIME,
+          maxLife: PARTICLE_LIFETIME
+        });
+      }
+    }
+
+    // --- Game Loop ---
+    function gameLoop(ts) {
+      if (!lastFrameTime) lastFrameTime = ts;
+      let dt = (ts - lastFrameTime) / 1000;
+      lastFrameTime = ts;
+
+      // Update
+      if (gameState === 'playing') {
+        orbitAngle += orbitDir * ORBIT_SPEED * dt;
+        // Keep angle in [0, 2PI]
+        if (orbitAngle > Math.PI * 2) orbitAngle -= Math.PI * 2;
+        if (orbitAngle < 0) orbitAngle += Math.PI * 2;
+
+        // Update planet trail
+        planetTrail.push({
+          x: SUN_X + Math.cos(orbitAngle) * ORBIT_RADIUS,
+          y: SUN_Y + Math.sin(orbitAngle) * ORBIT_RADIUS
+        });
+        if (planetTrail.length > planetTrailMax) planetTrail.shift();
+
+        // Asteroid spawn
+        asteroidSpawnTimer += dt * 1000;
+        if (asteroidSpawnTimer > asteroidSpawnInterval) {
+          spawnAsteroid();
+          asteroidSpawnTimer = 0;
+          asteroidSpawnInterval *= ASTEROID_SPAWN_ACCEL;
+          asteroidSpawnInterval = clamp(asteroidSpawnInterval, 320, ASTEROID_SPAWN_INTERVAL);
+        }
+
+        // Update asteroids
+        for (let a of asteroids) {
+          a.x += Math.cos(a.angle) * a.speed;
+          a.y += Math.sin(a.angle) * a.speed;
+          a.rot += a.rotSpeed;
+        }
+        // Remove asteroids that passed the sun
+        asteroids = asteroids.filter(a => dist(a.x, a.y, SUN_X, SUN_Y) > SUN_RADIUS - 8);
+
+        // Collision detection
+        let planetX = SUN_X + Math.cos(orbitAngle) * ORBIT_RADIUS;
+        let planetY = SUN_Y + Math.sin(orbitAngle) * ORBIT_RADIUS;
+        for (let a of asteroids) {
+          if (dist(a.x, a.y, planetX, planetY) < a.radius + PLANET_RADIUS - 2) {
+            // Game over
+            spawnParticles(planetX, planetY, planetColor);
+            gameState = 'gameover';
+            setTimeout(() => {
+              centerTextDiv.innerHTML = `Game Over<br>Score: ${score}<br><span style="font-size:0.7em;">Tap/click/press SPACE to restart</span>`;
+              instructionsDiv.style.opacity = 1;
+            }, 400);
+            if (score > highscore) {
+              highscore = score;
+              localStorage.setItem('orbitalDodgeHigh', highscore);
+            }
+            break;
+          }
+        }
+
+        // Update score
+        score += dt * 10;
+        scoreDiv.textContent = 'Score: ' + Math.floor(score);
+
+        // Update particles
+        for (let p of particles) {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt;
+        }
+        particles = particles.filter(p => p.life > 0);
+      } else {
+        // Idle: fade trail
+        if (planetTrail.length > 2) planetTrail.shift();
+      }
+
+      // Draw
+      draw();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // --- Drawing ---
+    function draw() {
+      ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+      // Draw sun
+      let sunGradient = ctx.createRadialGradient(SUN_X, SUN_Y, 0, SUN_X, SUN_Y, SUN_RADIUS);
+      sunGradient.addColorStop(0, '#fffbe6');
+      sunGradient.addColorStop(0.5, '#ffd700');
+      sunGradient.addColorStop(1, '#ff9800');
+      ctx.beginPath();
+      ctx.arc(SUN_X, SUN_Y, SUN_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = sunGradient;
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 32;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Draw orbit path
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.beginPath();
+      ctx.arc(SUN_X, SUN_Y, ORBIT_RADIUS, 0, Math.PI * 2);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 8]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Draw planet trail
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = planetColor;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      for (let i = 0; i < planetTrail.length; ++i) {
+        let pt = planetTrail[i];
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw asteroids
+      for (let a of asteroids) {
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(a.rot);
+        ctx.beginPath();
+        // Irregular asteroid shape
+        let verts = 8 + Math.floor(a.radius / 3);
+        for (let i = 0; i < verts; ++i) {
+          let ang = (Math.PI * 2 / verts) * i;
+          let r = a.radius * lerp(0.85, 1.15, Math.random());
+          let px = Math.cos(ang) * r;
+          let py = Math.sin(ang) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#b0b0b0';
+        ctx.shadowColor = '#888';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw planet
+      let planetX = SUN_X + Math.cos(orbitAngle) * ORBIT_RADIUS;
+      let planetY = SUN_Y + Math.sin(orbitAngle) * ORBIT_RADIUS;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(planetX, planetY, PLANET_RADIUS, 0, Math.PI * 2);
+      let grad = ctx.createRadialGradient(planetX - 6, planetY - 6, 4, planetX, planetY, PLANET_RADIUS);
+      grad.addColorStop(0, '#fff');
+      grad.addColorStop(0.3, planetColor);
+      grad.addColorStop(1, '#0ff');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = planetColor;
+      ctx.shadowBlur = 16;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#fff8';
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw particles
+      for (let p of particles) {
+        ctx.save();
+        ctx.globalAlpha = p.life / p.maxLife;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // --- Input Handling ---
+    function reverseOrbit() {
+      if (gameState === 'playing') {
+        orbitDir *= -1;
+        lastReverse = performance.now();
+        // Quick color flash
+        planetColor = orbitDir === 1 ? '#00f2fe' : '#f7971e';
+        setTimeout(() => {
+          planetColor = '#00f2fe';
+        }, 120);
+      } else if (gameState === 'start') {
+        startGame();
+      } else if (gameState === 'gameover') {
+        startGame();
+      }
+    }
+
+    function startGame() {
+      orbitAngle = Math.PI / 2;
+      orbitDir = 1;
+      lastReverse = 0;
+      asteroids = [];
+      particles = [];
+      score = 0;
+      asteroidSpawnTimer = 0;
+      asteroidSpawnInterval = ASTEROID_SPAWN_INTERVAL;
+      planetTrail = [];
+      gameState = 'playing';
+      centerTextDiv.textContent = '';
+      instructionsDiv.style.opacity = 0.7;
+      scoreDiv.textContent = 'Score: 0';
+    }
+
+    // --- Event Listeners ---
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        reverseOrbit();
+      }
+    });
+    canvas.addEventListener('mousedown', reverseOrbit);
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      reverseOrbit();
+    }, {passive: false});
+    // Also allow clicking anywhere
+    document.body.addEventListener('mousedown', e => {
+      if (e.target !== canvas) reverseOrbit();
+    });
+    document.body.addEventListener('touchstart', e => {
+      if (e.target !== canvas) reverseOrbit();
+    }, {passive: false});
+
+    // --- Responsive Canvas ---
+    function resizeCanvas() {
+      let w = window.innerWidth, h = window.innerHeight;
+      let scale = Math.min(w / CANVAS_W, h / CANVAS_H, 1);
+      canvas.style.width = (CANVAS_W * scale) + 'px';
+      canvas.style.height = (CANVAS_H * scale) + 'px';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // --- High Score ---
+    function loadHighscore() {
+      let hs = localStorage.getItem('orbitalDodgeHigh');
+      highscore = hs ? parseInt(hs) : 0;
+      highscoreDiv.textContent = 'High: ' + highscore;
+    }
+    loadHighscore();
+
+    // --- Start Screen ---
+    function showStartScreen() {
+      centerTextDiv.innerHTML = 'Orbital Dodge<br><span style="font-size:0.7em;">Tap/click/press SPACE to start</span>';
+      instructionsDiv.style.opacity = 1;
+      scoreDiv.textContent = 'Score: 0';
+      highscoreDiv.textContent = 'High: ' + highscore;
+    }
+    showStartScreen();
+
+    // --- Start Game Loop ---
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
