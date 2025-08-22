@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrono Echo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            text-align: center;
+        }
+        canvas {
+            background-color: #2a2a2a;
+            border: 2px solid #4f4f4f;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+        #info {
+            margin-top: 20px;
+            max-width: 600px;
+        }
+        h1 {
+            color: #00ffff;
+            text-shadow: 0 0 5px #00ffff;
+            margin-bottom: 10px;
+        }
+        p {
+            margin: 5px 0;
+            font-size: 1.1em;
+        }
+        span {
+            background-color: #4f4f4f;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chrono Echo</h1>
+    <canvas id="gameCanvas"></canvas>
+    <div id="info">
+        <p>Use <span>Arrow Keys</span> or <span>A</span>/<span>D</span> to move & <span>W</span>/<span>Up</span> to jump.</p>
+        <p>Press <span>R</span> to start/stop recording an echo of your actions.</p>
+        <p>Press <span>E</span> to play back your echo. You can only have one echo at a time.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GAME_WIDTH = 600;
+        const GAME_HEIGHT = 400;
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        // --- Audio Context for Generated Sounds ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        document.body.addEventListener('click', initAudio, { once: true });
+        document.body.addEventListener('keydown', initAudio, { once: true });
+
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            switch (type) {
+                case 'jump':
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                    oscillator.frequency.linearRampToValueAtTime(300, audioCtx.currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.2);
+                    break;
+                case 'record_start':
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(261.63, audioCtx.currentTime); // C4
+                    gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+                    break;
+                case 'record_stop':
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+                    gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+                    break;
+                case 'playback':
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+                    break;
+                case 'win':
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+                    oscillator.frequency.linearRampToValueAtTime(1046.50, audioCtx.currentTime + 0.5); // C6
+                    gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
+                    break;
+            }
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // --- Game State ---
+        let gameState = {
+            currentLevel: 0,
+            recording: false,
+            recordedData: [],
+            playback: false,
+            echoData: [],
+            echoFrame: 0,
+            message: '',
+            messageTimer: 0
+        };
+
+        // --- Player ---
+        const player = {
+            x: 50,
+            y: 300,
+            width: 20,
+            height: 30,
+            vx: 0,
+            vy: 0,
+            speed: 4,
+            jumpStrength: 12,
+            onGround: false,
+            color: '#00ffff'
+        };
+
+        // --- Echo ---
+        const echo = {
+            x: -100,
+            y: -100,
+            width: 20,
+            height: 30,
+            color: 'rgba(0, 255, 255, 0.4)'
+        };
+
+        // --- Input Handling ---
+        const keys = {
+            left: false,
+            right: false,
+            up: false,
+            r: false,
+            e: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft': case 'a': keys.left = true; break;
+                case 'ArrowRight': case 'd': keys.right = true; break;
+                case 'ArrowUp': case 'w': keys.up = true; break;
+                case 'r': if (!keys.r) handleRKey(); keys.r = true; break;
+                case 'e': if (!keys.e) handleEKey(); keys.e = true; break;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft': case 'a': keys.left = false; break;
+                case 'ArrowRight': case 'd': keys.right = false; break;
+                case 'ArrowUp': case 'w': keys.up = false; break;
+                case 'r': keys.r = false; break;
+                case 'e': keys.e = false; break;
+            }
+        });
+
+        function handleRKey() {
+            gameState.recording = !gameState.recording;
+            if (gameState.recording) {
+                gameState.recordedData = [];
+                showMessage("REC ●", 10000);
+                playSound('record_start');
+            } else {
+                showMessage("Recording Stopped", 120);
+                playSound('record_stop');
+            }
+        }
+
+        function handleEKey() {
+            if (!gameState.recording && gameState.recordedData.length > 0) {
+                gameState.playback = true;
+                gameState.echoData = [...gameState.recordedData];
+                gameState.echoFrame = 0;
+                showMessage("Playback Started", 120);
+                playSound('playback');
+            }
+        }
+
+        // --- Level Design ---
+        const levels = [
+            { // Level 0: Tutorial
+                platforms: [
+                    { x: 0, y: 380, width: 600, height: 20 },
+                    { x: 200, y: 300, width: 100, height: 20 },
+                    { x: 400, y: 220, width: 100, height: 20 }
+                ],
+                goal: { x: 550, y: 180, width: 30, height: 40 },
+                switches: [],
+                doors: [],
+                start: { x: 50, y: 340 },
+                text: ["Reach the glowing portal!"]
+            },
+            { // Level 1: First switch
+                platforms: [
+                    { x: 0, y: 380, width: 250, height: 20 },
+                    { x: 350, y: 380, width: 250, height: 20 }
+                ],
+                goal: { x: 550, y: 340, width: 30, height: 40 },
+                switches: [{ id: 1, x: 50, y: 370, width: 40, height: 10, pressed: false }],
+                doors: [{ id: 1, x: 280, y: 280, width: 40, height: 100 }],
+                start: { x: 150, y: 340 },
+                text: ["A door blocks your path.", "Use an Echo to hold down the switch."]
+            },
+            { // Level 2: Timed collaboration
+                platforms: [
+                    { x: 0, y: 380, width: 600, height: 20 },
+                    { x: 0, y: 200, width: 100, height: 20 },
+                    { x: 500, y: 200, width: 100, height: 20 },
+                    { x: 250, y: 100, width: 100, height: 20 }
+                ],
+                goal: { x: 285, y: 60, width: 30, height: 40 },
+                switches: [
+                    { id: 1, x: 20, y: 190, width: 40, height: 10, pressed: false },
+                    { id: 2, x: 540, y: 190, width: 40, height: 10, pressed: false }
+                ],
+                doors: [{ id: 1, x: 220, y: 100, width: 20, height: 280, requires: 2 }],
+                start: { x: 50, y: 340 },
+                text: ["Some doors require more power.", "Both switches must be pressed at once."]
+            },
+            { // Level 3: The Leap of Faith
+                platforms: [
+                    { x: 0, y: 380, width: 150, height: 20 },
+                    { x: 450, y: 380, width: 150, height: 20 }
+                ],
+                goal: { x: 550, y: 340, width: 30, height: 40 },
+                switches: [{ id: 1, x: 50, y: 370, width: 40, height: 10, pressed: false }],
+                doors: [],
+                dynamicPlatforms: [{ id: 1, x: 250, y: 380, width: 100, height: 20, active: false }],
+                start: { x: 80, y: 340 },
+                text: ["Create your own path.", "Record yourself, then use your echo as a platform."]
+            }
+        ];
+
+        function loadLevel(levelIndex) {
+            if (levelIndex >= levels.length) {
+                gameState.currentLevel = 0; // Loop back or show win screen
+                showMessage("YOU WON! CONGRATULATIONS!", 10000);
+            }
+            const level = levels[gameState.currentLevel];
+            player.x = level.start.x;
+            player.y = level.start.y;
+            player.vx = 0;
+            player.vy = 0;
+            gameState.recording = false;
+            gameState.playback = false;
+            gameState.recordedData = [];
+            gameState.echoData = [];
+            if(level.switches) level.switches.forEach(s => s.pressed = false);
+            if(level.dynamicPlatforms) level.dynamicPlatforms.forEach(p => p.active = false);
+
+            showMessage(`Level ${gameState.currentLevel + 1}`, 180);
+        }
+
+        // --- Game Logic ---
+        const GRAVITY = 0.6;
+        const FRICTION = 0.8;
+
+        function update() {
+            // -- Player Logic --
+            // Horizontal movement
+            if (keys.left) player.vx = -player.speed;
+            if (keys.right) player.vx = player.speed;
+            player.x += player.vx;
+            player.vx *= FRICTION;
+
+            // Vertical movement
+            player.vy += GRAVITY;
+            player.y += player.vy;
+            player.onGround = false;
+            
+            // Record player state
+            if (gameState.recording) {
+                gameState.recordedData.push({ x: player.x, y: player.y });
+            }
+
+            // -- Echo Logic --
+            if (gameState.playback) {
+                if (gameState.echoFrame < gameState.echoData.length) {
+                    const frame = gameState.echoData[gameState.echoFrame];
+                    echo.x = frame.x;
+                    echo.y = frame.y;
+                    gameState.echoFrame++;
+                } else {
+                    // Reset echo position when playback finishes
+                    echo.x = -100;
+                    echo.y = -100;
+                }
+            } else {
+                 echo.x = -100;
+                 echo.y = -100;
+            }
+
+            // -- Collision Detection & Interaction --
+            const level = levels[gameState.currentLevel];
+            let allPlatforms = [...level.platforms];
+            
+            // Dynamic platforms logic
+            if (level.dynamicPlatforms) {
+                level.dynamicPlatforms.forEach(dp => {
+                    const switchObj = level.switches.find(s => s.id === dp.id);
+                    dp.active = switchObj && switchObj.pressed;
+                    if(dp.active) allPlatforms.push(dp);
+                });
+            }
+            
+            // Add echo as a potential platform for the player
+            if (gameState.playback && gameState.currentLevel === 3) { // Special level logic
+                 allPlatforms.push({x: echo.x, y: echo.y, width: echo.width, height: 5}); // Echo is a small platform
+            }
+
+            checkCollisions(player, allPlatforms);
+            if(gameState.playback) checkCollisions(echo, allPlatforms);
+
+            // Switches logic
+            if(level.switches) {
+                level.switches.forEach(s => s.pressed = false); // Reset switches each frame
+                checkSwitchPress(player, level.switches);
+                if (gameState.playback) checkSwitchPress(echo, level.switches);
+            }
+
+            // Doors logic
+            if(level.doors) {
+                level.doors.forEach(door => {
+                    const requiredSwitches = door.requires || 1;
+                    const pressedSwitches = level.switches.filter(s => s.id === door.id && s.pressed).length;
+                    
+                    if (pressedSwitches < requiredSwitches) {
+                        checkDoorCollision(player, door);
+                    }
+                });
+            }
+
+            // Goal check
+            if (isColliding(player, level.goal)) {
+                playSound('win');
+                gameState.currentLevel++;
+                loadLevel(gameState.currentLevel);
+            }
+
+            // Fall out of world
+            if (player.y > GAME_HEIGHT) {
+                loadLevel(gameState.currentLevel);
+            }
+            
+            if (gameState.messageTimer > 0) {
+                gameState.messageTimer--;
+            }
+        }
+        
+        function checkCollisions(entity, platforms) {
+            platforms.forEach(p => {
+                // Check collision from top
+                if (entity.y + entity.height > p.y &&
+                    entity.y + entity.height < p.y + 20 && // only collide within top 20px
+                    entity.x + entity.width > p.x &&
+                    entity.x < p.x + p.width) {
+                    
+                    if (entity.vy >= 0) { // Only collide when falling
+                        entity.vy = 0;
+                        entity.y = p.y - entity.height;
+                        if (entity === player) {
+                            player.onGround = true;
+                            if (keys.up) {
+                                player.vy = -player.jumpStrength;
+                                playSound('jump');
+                            }
+                        }
+                    }
+                }
+                // Check side collisions
+                if (entity.y + entity.height > p.y && entity.y < p.y + p.height &&
+                    entity.x + entity.width > p.x && entity.x < p.x + p.width) {
+                     // Simple horizontal collision response
+                    if (entity.vx > 0 && entity.x + entity.width > p.x && entity.x < p.x) {
+                        entity.x = p.x - entity.width;
+                        entity.vx = 0;
+                    } else if (entity.vx < 0 && entity.x < p.x + p.width && entity.x + entity.width > p.x + p.width) {
+                        entity.x = p.x + p.width;
+                        entity.vx = 0;
+                    }
+                }
+            });
+        }
+        
+        function checkDoorCollision(entity, door) {
+            if (isColliding(entity, door)) {
+                 if (entity.vx > 0) {
+                     entity.x = door.x - entity.width;
+                 } else if (entity.vx < 0) {
+                     entity.x = door.x + door.width;
+                 }
+                 entity.vx = 0;
+            }
+        }
+
+        function checkSwitchPress(entity, switches) {
+            switches.forEach(s => {
+                if (isColliding(entity, s)) {
+                    s.pressed = true;
+                }
+            });
+        }
+        
+        function isColliding(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // --- Rendering ---
+        function draw() {
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            const level = levels[gameState.currentLevel];
+
+            // Draw Platforms
+            ctx.fillStyle = '#8f8f8f';
+            level.platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+            if(level.dynamicPlatforms) {
+                level.dynamicPlatforms.forEach(dp => {
+                    if (dp.active) {
+                        ctx.fillStyle = '#00ffff';
+                        ctx.fillRect(dp.x, dp.y, dp.width, dp.height);
+                    }
+                });
+            }
+
+            // Draw Switches & Doors
+            if(level.switches) {
+                level.switches.forEach(s => {
+                    ctx.fillStyle = s.pressed ? '#ff00ff' : '#8c3a8c';
+                    ctx.fillRect(s.x, s.y, s.width, s.height);
+                });
+            }
+            if(level.doors) {
+                level.doors.forEach(d => {
+                    const requiredSwitches = d.requires || 1;
+                    const pressedSwitches = level.switches.filter(s => s.id === d.id && s.pressed).length;
+                    if (pressedSwitches < requiredSwitches) {
+                        ctx.fillStyle = '#ff6347';
+                        ctx.fillRect(d.x, d.y, d.width, d.height);
+                    }
+                });
+            }
+            
+            // Draw Goal
+            ctx.fillStyle = '#ffff00';
+            ctx.fillRect(level.goal.x, level.goal.y, level.goal.width, level.goal.height);
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(level.goal.x+5, level.goal.y+5, level.goal.width-10, level.goal.height-10);
+            ctx.globalAlpha = 1.0;
+
+            // Draw Echo
+            if (gameState.playback) {
+                ctx.fillStyle = echo.color;
+                ctx.fillRect(echo.x, echo.y, echo.width, echo.height);
+            }
+
+            // Draw Player
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Draw Text & Messages
+            if(level.text) {
+                ctx.fillStyle = 'rgba(224, 224, 224, 0.7)';
+                ctx.font = '16px "Courier New", Courier, monospace';
+                level.text.forEach((line, index) => {
+                    ctx.fillText(line, 20, 30 + index * 20);
+                });
+            }
+            
+            if (gameState.messageTimer > 0) {
+                ctx.fillStyle = gameState.recording ? '#ff0000' : '#ffffff';
+                ctx.font = 'bold 24px "Courier New", Courier, monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(gameState.message, GAME_WIDTH / 2, 40);
+                ctx.textAlign = 'left';
+            }
+        }
+        
+        function showMessage(msg, duration) {
+            gameState.message = msg;
+            gameState.messageTimer = duration;
+        }
+
+        // --- Game Loop ---
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game
+        loadLevel(gameState.currentLevel);
+        gameLoop();
+    </script>
+</body>
+</html>

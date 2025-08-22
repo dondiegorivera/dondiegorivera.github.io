@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Weaver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: radial-gradient(ellipse at center, #0a0a0a 0%, #000000 100%);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+            background: transparent;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        #levelInfo {
+            font-size: 18px;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        #score {
+            font-size: 24px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-size: 14px;
+            opacity: 0.6;
+            max-width: 300px;
+        }
+
+        #paletteUnlock {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 200;
+        }
+
+        #menu h1 {
+            font-size: 48px;
+            margin-bottom: 30px;
+            background: linear-gradient(45deg, #ff006e, #8338ec, #3a86ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        .menu-btn {
+            display: block;
+            margin: 15px auto;
+            padding: 15px 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .menu-btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        #soundToggle {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui" class="hidden">
+        <div id="levelInfo">Level <span id="levelNum">1</span> - Goal: <span id="goalText">Guide 10 particles to the portal</span></div>
+        <div id="score">Particles: <span id="particleCount">0</span>/<span id="goalCount">10</span></div>
+        <div id="paletteUnlock">Palettes: <span id="paletteCount">0</span>/5</div>
+    </div>
+    
+    <div id="instructions" class="hidden">
+        Click and drag to draw gravity wells • Right-click to remove • Space to pause
+    </div>
+    
+    <div id="menu">
+        <h1>Gravity Weaver</h1>
+        <button class="menu-btn" onclick="startGame()">Start Journey</button>
+        <button class="menu-btn" onclick="showTutorial()">How to Play</button>
+        <button class="menu-btn" onclick="selectPalette()">Color Palettes</button>
+    </div>
+
+    <button id="soundToggle" onclick="toggleSound()">🔊</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game state
+        let gameState = 'menu';
+        let level = 1;
+        let particles = [];
+        let gravityWells = [];
+        let portals = [];
+        let obstacles = [];
+        let score = 0;
+        let goal = 10;
+        let soundEnabled = true;
+        let currentPalette = 0;
+        let palettesUnlocked = 0;
+        
+        // Audio context for procedural sounds
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Color palettes
+        const palettes = [
+            { primary: '#00ffff', secondary: '#ff006e', accent: '#8338ec', bg: '#000000' },
+            { primary: '#ffbe0b', secondary: '#fb5607', accent: '#ff006e', bg: '#001219' },
+            { primary: '#06ffa5', secondary: '#3a86ff', accent: '#8338ec', bg: '#10002b' },
+            { primary: '#ff477e', secondary: '#7209b7', accent: '#560bad', bg: '#240046' },
+            { primary: '#ffd60a', secondary: '#ffc300', accent: '#003566', bg: '#000814' }
+        ];
+        
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        // Particle class
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = Math.random() * 2 + 1;
+                this.radius = 3 + Math.random() * 3;
+                this.trail = [];
+                this.maxTrail = 20;
+                this.color = palettes[currentPalette].primary;
+                this.sparkles = [];
+            }
+            
+            update() {
+                // Store trail
+                this.trail.push({ x: this.x, y: this.y, radius: this.radius });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+                
+                // Apply gravity wells
+                gravityWells.forEach(well => {
+                    const dx = well.x - this.x;
+                    const dy = well.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < well.radius) {
+                        const force = (well.strength * (1 - distance / well.radius)) / 10;
+                        this.vx += (dx / distance) * force;
+                        this.vy += (dy / distance) * force;
+                    }
+                });
+                
+                // Apply physics
+                this.vy += 0.1;
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Create sparkles
+                if (Math.random() < 0.1) {
+                    this.sparkles.push({
+                        x: this.x + (Math.random() - 0.5) * 10,
+                        y: this.y + (Math.random() - 0.5) * 10,
+                        life: 30,
+                        maxLife: 30
+                    });
+                }
+                
+                // Update sparkles
+                this.sparkles = this.sparkles.filter(s => {
+                    s.life--;
+                    return s.life > 0;
+                });
+                
+                // Boundary collision
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -0.8;
+                if (this.y > canvas.height + 50) this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = -10;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = Math.random() * 2 + 1;
+                this.trail = [];
+            }
+            
+            draw() {
+                // Draw trail
+                this.trail.forEach((point, index) => {
+                    const alpha = (index / this.trail.length) * 0.5;
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, point.radius * alpha, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                // Draw sparkles
+                this.sparkles.forEach(sparkle => {
+                    const alpha = sparkle.life / sparkle.maxLife;
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = palettes[currentPalette].accent;
+                    ctx.beginPath();
+                    ctx.arc(sparkle.x, sparkle.y, 2 * alpha, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                // Draw particle
+                ctx.globalAlpha = 1;
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // Gravity Well class
+        class GravityWell {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 50;
+                this.strength = 2;
+                this.pulsePhase = 0;
+            }
+            
+            update() {
+                this.pulsePhase += 0.05;
+            }
+            
+            draw() {
+                const pulseRadius = this.radius + Math.sin(this.pulsePhase) * 10;
+                
+                // Draw field
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, pulseRadius);
+                gradient.addColorStop(0, palettes[currentPalette].secondary + '40');
+                gradient.addColorStop(0.7, palettes[currentPalette].secondary + '20');
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, pulseRadius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw core
+                ctx.fillStyle = palettes[currentPalette].secondary;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // Portal class
+        class Portal {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 30;
+                this.rotation = 0;
+                this.particlesCollected = 0;
+            }
+            
+            update() {
+                this.rotation += 0.02;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                // Draw portal rings
+                for (let i = 0; i < 3; i++) {
+                    const radius = this.radius - i * 8;
+                    ctx.strokeStyle = palettes[currentPalette].accent;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+                // Draw center glow
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                gradient.addColorStop(0, palettes[currentPalette].accent);
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+                
+                ctx.restore();
+            }
+            
+            checkCollision(particle) {
+                const dx = this.x - particle.x;
+                const dy = this.y - particle.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < this.radius) {
+                    this.particlesCollected++;
+                    particle.reset();
+                    return true;
+                }
+                return false;
+            }
+        }
+        
+        // Obstacle class
+        class Obstacle {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.glowPhase = 0;
+            }
+            
+            update() {
+                this.glowPhase += 0.03;
+            }
+            
+            draw() {
+                const glowIntensity = 0.5 + Math.sin(this.glowPhase) * 0.3;
+                
+                // Draw obstacle with glow
+                ctx.shadowColor = palettes[currentPalette].secondary;
+                ctx.shadowBlur = 20 * glowIntensity;
+                ctx.fillStyle = palettes[currentPalette].secondary;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // Reset shadow
+                ctx.shadowBlur = 0;
+            }
+            
+            checkCollision(particle) {
+                return particle.x > this.x && particle.x < this.x + this.width &&
+                       particle.y > this.y && particle.y < this.y + this.height;
+            }
+        }
+        
+        // Level generation
+        function generateLevel(levelNum) {
+            obstacles = [];
+            portals = [];
+            
+            const portal = new Portal(canvas.width - 100, canvas.height - 100);
+            portals.push(portal);
+            
+            // Generate obstacles based on level
+            const obstacleCount = Math.min(levelNum * 2, 10);
+            for (let i = 0; i < obstacleCount; i++) {
+                const x = Math.random() * (canvas.width - 200) + 100;
+                const y = Math.random() * (canvas.height - 200) + 100;
+                const width = Math.random() * 100 + 50;
+                const height = 20;
+                
+                // Ensure obstacles don't block the portal
+                const dx = x - portal.x;
+                const dy = y - portal.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 100) {
+                    obstacles.push(new Obstacle(x, y, width, height));
+                }
+            }
+            
+            // Update goal
+            goal = Math.min(5 + levelNum * 2, 25);
+            document.getElementById('goalCount').textContent = goal;
+            document.getElementById('levelNum').textContent = levelNum;
+            
+            // Reset particles
+            particles = [];
+            for (let i = 0; i < Math.max(5, levelNum * 2); i++) {
+                particles.push(new Particle(Math.random() * canvas.width, -Math.random() * 100));
+            }
+        }
+        
+        // Sound generation
+        function playTone(frequency, duration, type = 'sine') {
+            if (!soundEnabled) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = type;
+            
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+        
+        function playCollectSound() {
+            playTone(440 + Math.random() * 220, 0.2, 'triangle');
+        }
+        
+        function playWellSound() {
+            playTone(220 + Math.random() * 110, 0.1, 'sine');
+        }
+        
+        // Game loop
+        function gameLoop() {
+            if (gameState !== 'playing') return;
+            
+            // Clear canvas
+            ctx.fillStyle = palettes[currentPalette].bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Update and draw obstacles
+            obstacles.forEach(obstacle => {
+                obstacle.update();
+                obstacle.draw();
+            });
+            
+            // Update and draw gravity wells
+            gravityWells.forEach(well => {
+                well.update();
+                well.draw();
+            });
+            
+            // Update and draw portals
+            portals.forEach(portal => {
+                portal.update();
+                portal.draw();
+            });
+            
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update();
+                
+                // Check portal collision
+                portals.forEach(portal => {
+                    if (portal.checkCollision(particle)) {
+                        score++;
+                        document.getElementById('particleCount').textContent = score;
+                        playCollectSound();
+                        
+                        if (score >= goal) {
+                            levelComplete();
+                        }
+                    }
+                });
+                
+                // Check obstacle collision
+                obstacles.forEach(obstacle => {
+                    if (obstacle.checkCollision(particle)) {
+                        particle.reset();
+                    }
+                });
+                
+                particle.draw();
+            });
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Level completion
+        function levelComplete() {
+            playTone(880, 0.5, 'triangle');
+            
+            if (level % 3 === 0 && palettesUnlocked < palettes.length - 1) {
+                palettesUnlocked++;
+                document.getElementById('paletteCount').textContent = palettesUnlocked;
+                alert(`Level ${level} Complete! New color palette unlocked!`);
+            } else {
+                alert(`Level ${level} Complete!`);
+            }
+            
+            level++;
+            score = 0;
+            document.getElementById('particleCount').textContent = score;
+            gravityWells = [];
+            generateLevel(level);
+        }
+        
+        // Input handling
+        let isDrawing = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if (gameState !== 'playing') return;
+            
+            if (e.button === 0) { // Left click
+                isDrawing = true;
+                const well = new GravityWell(e.clientX, e.clientY);
+                gravityWells.push(well);
+                playWellSound();
+            } else if (e.button === 2) { // Right click
+                gravityWells = gravityWells.filter(well => {
+                    const dx = well.x - e.clientX;
+                    const dy = well.y - e.clientY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    return distance > 30;
+                });
+            }
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            if (isDrawing && gameState === 'playing') {
+                const lastWell = gravityWells[gravityWells.length - 1];
+                const dx = lastWell.x - mouseX;
+                const dy = lastWell.y - mouseY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 20) {
+                    const well = new GravityWell(mouseX, mouseY);
+                    gravityWells.push(well);
+                    playWellSound();
+                }
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+        
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && gameState === 'playing') {
+                e.preventDefault();
+                gravityWells = [];
+            }
+        });
+        
+        // Menu functions
+        function startGame() {
+            gameState = 'playing';
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('ui').classList.remove('hidden');
+            document.getElementById('instructions').classList.remove('hidden');
+            
+            level = 1;
+            score = 0;
+            gravityWells = [];
+            generateLevel(level);
+            gameLoop();
+        }
+        
+        function showTutorial() {
+            alert(`Gravity Weaver Tutorial:
+            
+• Click and drag to draw gravity wells
+• Wells attract falling particles
+• Guide particles to the glowing portal
+• Right-click to remove wells
+• Press SPACE to clear all wells
+• Avoid red obstacles
+• Complete levels to unlock color palettes!`);
+        }
+        
+        function selectPalette() {
+            const paletteMenu = document.createElement('div');
+            paletteMenu.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.9);
+                padding: 30px;
+                border: 2px solid #00ffff;
+                border-radius: 10px;
+                z-index: 300;
+            `;
+            
+            palettes.forEach((palette, index) => {
+                if (index <= palettesUnlocked) {
+                    const btn = document.createElement('button');
+                    btn.textContent = `Palette ${index + 1}`;
+                    btn.style.cssText = `
+                        display: block;
+                        margin: 10px;
+                        padding: 10px 20px;
+                        background: ${palette.primary};
+                        color: #000;
+                        border: none;
+                        cursor: pointer;
+                    `;
+                    btn.onclick = () => {
+                        currentPalette = index;
+                        paletteMenu.remove();
+                    };
+                    paletteMenu.appendChild(btn);
+                }
+            });
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.cssText = `
+                display: block;
+                margin: 20px auto 0;
+                padding: 10px 20px;
+                background: #ff006e;
+                color: white;
+                border: none;
+                cursor: pointer;
+            `;
+            closeBtn.onclick = () => paletteMenu.remove();
+            paletteMenu.appendChild(closeBtn);
+            
+            document.body.appendChild(paletteMenu);
+        }
+        
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            document.getElementById('soundToggle').textContent = soundEnabled ? '🔊' : '🔇';
+        }
+        
+        // Initialize
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Add some ambient background music
+        let ambientInterval;
+        function startAmbientMusic() {
+            ambientInterval = setInterval(() => {
+                if (soundEnabled && gameState === 'playing') {
+                    const note = 220 + Math.sin(Date.now() / 1000) * 110;
+                    playTone(note, 0.5, 'sine');
+                }
+            }, 2000);
+        }
+        
+        // Start ambient music when game starts
+        const originalStartGame = startGame;
+        startGame = function() {
+            originalStartGame();
+            startAmbientMusic();
+        };
+    </script>
+</body>
+</html>

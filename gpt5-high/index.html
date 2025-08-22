@@ -540,7 +540,7 @@
   }
 
   function spawnDrone(){
-    const d = {angle: rand()*Math.PI*2, dist: 30 + 10*G.entities.drone?.length|0, speed: 2.4, r:6};
+    const d = {angle: rand()*Math.PI*2, dist: 30 + 10*((G.entities.drones.length|0)), speed: 2.4, r:6};
     G.entities.drones.push(d);
   }
 
@@ -939,7 +939,8 @@
 
     // magnet ring visual
     const attractActive = G.input.attract || G.input.mouse.left;
-    if(attractActive && Player.energy>0){
+    const hasPlayer = Number.isFinite(Player.x) && Number.isFinite(Player.y) && Number.isFinite(Player.r);
+    if(hasPlayer && attractActive && Player.energy>0){
       ctx.beginPath();
       ctx.arc(Player.x, Player.y, Player.magnetR, 0, Math.PI*2);
       ctx.strokeStyle = 'rgba(120,235,255,0.12)';
@@ -961,7 +962,7 @@
       ctx.fill();
       ctx.restore();
       // magnet tether line
-      if(attractActive){
+      if(hasPlayer && attractActive){
         const dx=s.x-Player.x, dy=s.y-Player.y, d=Math.hypot(dx,dy);
         if(d<Player.magnetR*0.75){
           ctx.strokeStyle = 'rgba(120,235,255,0.15)'; ctx.lineWidth=1;
@@ -1013,33 +1014,37 @@
     }
 
     // drones
-    for(const d of G.entities.drones){
-      const px = Player.x + Math.cos(d.angle)*(36 + 8*Player.drones);
-      const py = Player.y + Math.sin(d.angle)*(36 + 8*Player.drones);
-      ctx.fillStyle='#9de8ff'; ctx.shadowColor='#9de8ff'; ctx.shadowBlur=10;
-      ctx.beginPath(); ctx.arc(px,py,d.r,0,Math.PI*2); ctx.fill();
+    if(hasPlayer){
+      for(const d of G.entities.drones){
+        const px = Player.x + Math.cos(d.angle)*(36 + 8*Player.drones);
+        const py = Player.y + Math.sin(d.angle)*(36 + 8*Player.drones);
+        ctx.fillStyle='#9de8ff'; ctx.shadowColor='#9de8ff'; ctx.shadowBlur=10;
+        ctx.beginPath(); ctx.arc(px,py,d.r,0,Math.PI*2); ctx.fill();
+      }
     }
 
     // player
-    ctx.save();
-    ctx.translate(Player.x, Player.y);
-    const grad2 = ctx.createRadialGradient(0,0,2, 0,0, Player.r+6);
-    grad2.addColorStop(0, '#c6e7ff');
-    grad2.addColorStop(1, '#65c7ff');
-    ctx.fillStyle = grad2; ctx.shadowColor='#65c7ff'; ctx.shadowBlur=20;
-    ctx.beginPath(); ctx.arc(0,0, Player.r, 0, Math.PI*2); ctx.fill();
-    // shield halo
-    if(Player.shield>0){
-      ctx.beginPath(); ctx.arc(0,0, Player.r+6, 0, Math.PI*2);
-      ctx.strokeStyle='rgba(158,209,255,.7)'; ctx.lineWidth=3; ctx.stroke();
+    if(hasPlayer){
+      ctx.save();
+      ctx.translate(Player.x, Player.y);
+      const grad2 = ctx.createRadialGradient(0,0,2, 0,0, Player.r+6);
+      grad2.addColorStop(0, '#c6e7ff');
+      grad2.addColorStop(1, '#65c7ff');
+      ctx.fillStyle = grad2; ctx.shadowColor='#65c7ff'; ctx.shadowBlur=20;
+      ctx.beginPath(); ctx.arc(0,0, Player.r, 0, Math.PI*2); ctx.fill();
+      // shield halo
+      if(Player.shield>0){
+        ctx.beginPath(); ctx.arc(0,0, Player.r+6, 0, Math.PI*2);
+        ctx.strokeStyle='rgba(158,209,255,.7)'; ctx.lineWidth=3; ctx.stroke();
+      }
+      // invul blink
+      if(Player.invul>0){
+        Player.invul -= G.dt;
+        ctx.beginPath(); ctx.arc(0,0, Player.r+2, 0, Math.PI*2);
+        ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.restore();
     }
-    // invul blink
-    if(Player.invul>0){
-      Player.invul -= G.dt;
-      ctx.beginPath(); ctx.arc(0,0, Player.r+2, 0, Math.PI*2);
-      ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
-    }
-    ctx.restore();
 
     // particles
     for(const p of G.entities.parts){

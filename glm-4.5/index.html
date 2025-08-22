@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Shift</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #0a0a1a;
+            color: #fff;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(100, 100, 255, 0.3);
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: transparent;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+            z-index: 10;
+        }
+        
+        .ui-element {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #level, #score, #timer {
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255,255,255,0.5);
+        }
+        
+        #dimensionIndicator {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #4488ff;
+            box-shadow: 0 0 10px currentColor;
+            transition: all 0.3s ease;
+        }
+        
+        #dimensionIndicator.quantum {
+            background: #aa44ff;
+        }
+        
+        #startScreen, #levelCompleteScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            transition: opacity 0.5s ease;
+        }
+        
+        .screen-title {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-align: center;
+            background: linear-gradient(90deg, #4488ff, #aa44ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(100, 100, 255, 0.5);
+        }
+        
+        .screen-subtitle {
+            font-size: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+        
+        .button {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: linear-gradient(90deg, #4488ff, #aa44ff);
+            border: none;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px;
+            box-shadow: 0 4px 15px rgba(100, 100, 255, 0.3);
+        }
+        
+        .button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(100, 100, 255, 0.5);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .controls {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+        
+        .controls-key {
+            display: inline-block;
+            padding: 5px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            margin: 0 5px;
+            font-weight: bold;
+        }
+        
+        #stars {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .star {
+            font-size: 30px;
+            color: #444;
+            transition: all 0.5s ease;
+        }
+        
+        .star.earned {
+            color: #ffdd00;
+            text-shadow: 0 0 10px #ffdd00;
+        }
+        
+        #particleCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="particleCanvas" width="800" height="600"></canvas>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <div id="ui">
+            <div class="ui-element">
+                <div id="level">Level: 1</div>
+            </div>
+            <div class="ui-element">
+                <div id="dimensionIndicator"></div>
+                <div id="score">Score: 0</div>
+            </div>
+            <div class="ui-element">
+                <div id="timer">Time: 0</div>
+            </div>
+        </div>
+        
+        <div id="startScreen">
+            <h1 class="screen-title">Quantum Shift</h1>
+            <p class="screen-subtitle">Navigate through parallel dimensions to collect gems and reach the portal. Shift between realities to overcome obstacles!</p>
+            <button class="button" id="startButton">Start Game</button>
+            <div class="controls">
+                <div><span class="controls-key">←</span> <span class="controls-key">→</span> Move</div>
+                <div><span class="controls-key">Space</span> Jump</div>
+                <div><span class="controls-key">Shift</span> Change Dimension</div>
+            </div>
+        </div>
+        
+        <div id="levelCompleteScreen" class="hidden">
+            <h1 class="screen-title">Level Complete!</h1>
+            <p class="screen-subtitle" id="levelCompleteText">You completed the level in 0 seconds with 0 gems!</p>
+            <div id="stars">
+                <div class="star" id="star1">★</div>
+                <div class="star" id="star2">★</div>
+                <div class="star" id="star3">★</div>
+            </div>
+            <button class="button" id="nextLevelButton">Next Level</button>
+            <button class="button" id="restartLevelButton">Restart Level</button>
+        </div>
+        
+        <div id="gameOverScreen" class="hidden">
+            <h1 class="screen-title">Game Over</h1>
+            <p class="screen-subtitle" id="gameOverText">You've completed all levels! Final score: 0</p>
+            <button class="button" id="restartGameButton">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        // Game setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const particleCanvas = document.getElementById('particleCanvas');
+        const particleCtx = particleCanvas.getContext('2d');
+        
+        // UI elements
+        const startScreen = document.getElementById('startScreen');
+        const levelCompleteScreen = document.getElementById('levelCompleteScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const levelElement = document.getElementById('level');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const dimensionIndicator = document.getElementById('dimensionIndicator');
+        const levelCompleteText = document.getElementById('levelCompleteText');
+        const gameOverText = document.getElementById('gameOverText');
+        
+        // Game state
+        let gameRunning = false;
+        let currentLevel = 1;
+        let score = 0;
+        let startTime = 0;
+        let elapsedTime = 0;
+        let currentDimension = 'normal'; // 'normal' or 'quantum'
+        let keys = {};
+        let particles = [];
+        
+        // Player object
+        const player = {
+            x: 100,
+            y: 400,
+            width: 30,
+            height: 40,
+            velocityX: 0,
+            velocityY: 0,
+            speed: 5,
+            jumpPower: 12,
+            grounded: false,
+            color: '#4488ff'
+        };
+        
+        // Level data
+        const levels = [
+            {
+                // Level 1 - Introduction
+                platforms: [
+                    // Normal dimension platforms
+                    { x: 0, y: 500, width: 300, height: 100, dimension: 'normal' },
+                    { x: 400, y: 500, width: 200, height: 100, dimension: 'normal' },
+                    { x: 650, y: 400, width: 150, height: 200, dimension: 'normal' },
+                    
+                    // Quantum dimension platforms
+                    { x: 0, y: 500, width: 200, height: 100, dimension: 'quantum' },
+                    { x: 300, y: 500, width: 150, height: 100, dimension: 'quantum' },
+                    { x: 500, y: 400, width: 100, height: 200, dimension: 'quantum' },
+                    { x: 650, y: 400, width: 150, height: 200, dimension: 'quantum' }
+                ],
+                gems: [
+                    { x: 200, y: 450, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 500, y: 450, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 150, y: 450, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 375, y: 450, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 550, y: 350, width: 20, height: 20, dimension: 'quantum', collected: false }
+                ],
+                hazards: [
+                    { x: 350, y: 480, width: 50, height: 20, dimension: 'normal' }
+                ],
+                portal: { x: 720, y: 350, width: 40, height: 40 },
+                playerStart: { x: 100, y: 400 },
+                timeLimit: 60,
+                targetScore: 3
+            },
+            {
+                // Level 2 - Moving platforms
+                platforms: [
+                    // Normal dimension platforms
+                    { x: 0, y: 500, width: 150, height: 100, dimension: 'normal' },
+                    { x: 250, y: 500, width: 100, height: 100, dimension: 'normal', moving: true, moveRange: 150, moveSpeed: 2, direction: 1, startX: 250 },
+                    { x: 500, y: 400, width: 100, height: 200, dimension: 'normal' },
+                    { x: 650, y: 300, width: 150, height: 300, dimension: 'normal' },
+                    
+                    // Quantum dimension platforms
+                    { x: 0, y: 500, width: 150, height: 100, dimension: 'quantum' },
+                    { x: 200, y: 400, width: 100, height: 200, dimension: 'quantum' },
+                    { x: 400, y: 500, width: 100, height: 100, dimension: 'quantum', moving: true, moveRange: 150, moveSpeed: 2.5, direction: -1, startX: 550 },
+                    { x: 650, y: 300, width: 150, height: 300, dimension: 'quantum' }
+                ],
+                gems: [
+                    { x: 100, y: 450, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 300, y: 450, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 550, y: 350, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 100, y: 450, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 250, y: 350, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 450, y: 450, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 700, y: 250, width: 20, height: 20, dimension: 'quantum', collected: false }
+                ],
+                hazards: [
+                    { x: 200, y: 480, width: 50, height: 20, dimension: 'normal' },
+                    { x: 350, y: 480, width: 50, height: 20, dimension: 'normal' },
+                    { x: 300, y: 380, width: 50, height: 20, dimension: 'quantum' },
+                    { x: 500, y: 480, width: 50, height: 20, dimension: 'quantum' }
+                ],
+                portal: { x: 720, y: 250, width: 40, height: 40 },
+                playerStart: { x: 100, y: 400 },
+                timeLimit: 90,
+                targetScore: 5
+            },
+            {
+                // Level 3 - Complex challenges
+                platforms: [
+                    // Normal dimension platforms
+                    { x: 0, y: 500, width: 100, height: 100, dimension: 'normal' },
+                    { x: 150, y: 450, width: 80, height: 150, dimension: 'normal' },
+                    { x: 280, y: 400, width: 80, height: 200, dimension: 'normal' },
+                    { x: 410, y: 350, width: 80, height: 250, dimension: 'normal' },
+                    { x: 540, y: 300, width: 80, height: 300, dimension: 'normal' },
+                    { x: 670, y: 200, width: 130, height: 400, dimension: 'normal' },
+                    
+                    // Quantum dimension platforms
+                    { x: 0, y: 500, width: 100, height: 100, dimension: 'quantum' },
+                    { x: 150, y: 500, width: 100, height: 100, dimension: 'quantum', moving: true, moveRange: 100, moveSpeed: 3, direction: 1, startX: 150 },
+                    { x: 300, y: 450, width: 100, height: 150, dimension: 'quantum' },
+                    { x: 450, y: 400, width: 100, height: 200, dimension: 'quantum', moving: true, moveRange: 100, moveSpeed: 2.5, direction: -1, startX: 550 },
+                    { x: 670, y: 200, width: 130, height: 400, dimension: 'quantum' }
+                ],
+                gems: [
+                    { x: 50, y: 450, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 190, y: 400, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 320, y: 350, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 450, y: 300, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 580, y: 250, width: 20, height: 20, dimension: 'normal', collected: false },
+                    { x: 50, y: 450, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 200, y: 450, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 350, y: 400, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 500, y: 350, width: 20, height: 20, dimension: 'quantum', collected: false },
+                    { x: 700, y: 150, width: 20, height: 20, dimension: 'quantum', collected: false }
+                ],
+                hazards: [
+                    { x: 250, y: 430, width: 30, height: 20, dimension: 'normal' },
+                    { x: 380, y: 330, width: 30, height: 20, dimension: 'normal' },
+                    { x: 510, y: 280, width: 30, height: 20, dimension: 'normal' },
+                    { x: 300, y: 430, width: 30, height: 20, dimension: 'quantum' },
+                    { x: 430, y: 380, width: 30, height: 20, dimension: 'quantum' },
+                    { x: 600, y: 280, width: 30, height: 20, dimension: 'quantum' }
+                ],
+                portal: { x: 720, y: 150, width: 40, height: 40 },
+                playerStart: { x: 50, y: 400 },
+                timeLimit: 120,
+                targetScore: 7
+            }
+        ];
+        
+        let currentLevelData = JSON.parse(JSON.stringify(levels[0]));
+        
+        // Particle class
+        class Particle {
+            constructor(x, y, color, size, velocityX, velocityY, life) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = size;
+                this.velocityX = velocityX;
+                this.velocityY = velocityY;
+                this.life = life;
+                this.maxLife = life;
+            }
+            
+            update() {
+                this.x += this.velocityX;
+                this.y += this.velocityY;
+                this.life--;
+                
+                // Apply gravity
+                this.velocityY += 0.1;
+                
+                // Fade out
+                this.alpha = this.life / this.maxLife;
+            }
+            
+            draw() {
+                particleCtx.save();
+                particleCtx.globalAlpha = this.alpha;
+                particleCtx.fillStyle = this.color;
+                particleCtx.beginPath();
+                particleCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                particleCtx.fill();
+                particleCtx.restore();
+            }
+        }
+        
+        // Create particles
+        function createParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 3 + 1;
+                const velocityX = Math.cos(angle) * speed;
+                const velocityY = Math.sin(angle) * speed;
+                const size = Math.random() * 3 + 1;
+                const life = Math.random() * 30 + 20;
+                
+                particles.push(new Particle(x, y, color, size, velocityX, velocityY, life));
+            }
+        }
+        
+        // Update particles
+        function updateParticles() {
+            particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const particle = particles[i];
+                particle.update();
+                particle.draw();
+                
+                if (particle.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Initialize game
+        function init() {
+            // Set up event listeners
+            document.getElementById('startButton').addEventListener('click', startGame);
+            document.getElementById('nextLevelButton').addEventListener('click', nextLevel);
+            document.getElementById('restartLevelButton').addEventListener('click', restartLevel);
+            document.getElementById('restartGameButton').addEventListener('click', restartGame);
+            
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                keys[e.key] = true;
+                
+                // Prevent default behavior for game keys
+                if (['ArrowLeft', 'ArrowRight', ' ', 'Shift'].includes(e.key)) {
+                    e.preventDefault();
+                }
+            });
+            
+            document.addEventListener('keyup', (e) => {
+                keys[e.key] = false;
+            });
+        }
+        
+        // Start game
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameRunning = true;
+            currentLevel = 1;
+            score = 0;
+            loadLevel(currentLevel);
+            gameLoop();
+        }
+        
+        // Load level
+        function loadLevel(levelNumber) {
+            currentLevel = levelNumber;
+            currentLevelData = JSON.parse(JSON.stringify(levels[levelNumber - 1]));
+            
+            // Reset player position
+            player.x = currentLevelData.playerStart.x;
+            player.y = currentLevelData.playerStart.y;
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.grounded = false;
+            
+            // Reset timer
+            startTime = Date.now();
+            
+            // Update UI
+            levelElement.textContent = `Level: ${currentLevel}`;
+            scoreElement.textContent = `Score: ${score}`;
+        }
+        
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            // Update game state
+            update();
+            
+            // Render game
+            render();
+            
+            // Update particles
+            updateParticles();
+            
+            // Continue game loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Update game state
+        function update() {
+            // Update timer
+            elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+            timerElement.textContent = `Time: ${elapsedTime}`;
+            
+            // Player movement
+            if (keys['ArrowLeft']) {
+                player.velocityX = -player.speed;
+            } else if (keys['ArrowRight']) {
+                player.velocityX = player.speed;
+            } else {
+                // Apply friction
+                player.velocityX *= 0.8;
+                if (Math.abs(player.velocityX) < 0.1) player.velocityX = 0;
+            }
+            
+            // Jump
+            if (keys[' '] && player.grounded) {
+                player.velocityY = -player.jumpPower;
+                player.grounded = false;
+                createParticles(player.x + player.width/2, player.y + player.height, '#ffffff', 5);
+            }
+            
+            // Dimension shift
+            if (keys['Shift']) {
+                if (currentDimension === 'normal') {
+                    currentDimension = 'quantum';
+                    dimensionIndicator.classList.add('quantum');
+                    player.color = '#aa44ff';
+                } else {
+                    currentDimension = 'normal';
+                    dimensionIndicator.classList.remove('quantum');
+                    player.color = '#4488ff';
+                }
+                
+                // Create dimension shift effect
+                createParticles(player.x + player.width/2, player.y + player.height/2, player.color, 20);
+                
+                // Prevent continuous shifting
+                keys['Shift'] = false;
+            }
+            
+            // Apply gravity
+            player.velocityY += 0.5;
+            
+            // Update player position
+            player.x += player.velocityX;
+            player.y += player.velocityY;
+            
+            // Check collisions with platforms
+            player.grounded = false;
+            const platforms = currentLevelData.platforms.filter(p => p.dimension === currentDimension);
+            
+            for (const platform of platforms) {
+                // Update moving platforms
+                if (platform.moving) {
+                    platform.x += platform.moveSpeed * platform.direction;
+                    
+                    if (Math.abs(platform.x - platform.startX) > platform.moveRange) {
+                        platform.direction *= -1;
+                    }
+                }
+                
+                // Check collision
+                if (checkCollision(player, platform)) {
+                    // Top collision (landing on platform)
+                    if (player.velocityY > 0 && player.y < platform.y) {
+                        player.y = platform.y - player.height;
+                        player.velocityY = 0;
+                        player.grounded = true;
+                    }
+                    // Bottom collision
+                    else if (player.velocityY < 0 && player.y > platform.y) {
+                        player.y = platform.y + platform.height;
+                        player.velocityY = 0;
+                    }
+                    // Left collision
+                    else if (player.velocityX > 0 && player.x < platform.x) {
+                        player.x = platform.x - player.width;
+                        player.velocityX = 0;
+                    }
+                    // Right collision
+                    else if (player.velocityX < 0 && player.x > platform.x) {
+                        player.x = platform.x + platform.width;
+                        player.velocityX = 0;
+                    }
+                }
+            }
+            
+            // Check collisions with gems
+            const gems = currentLevelData.gems.filter(g => g.dimension === currentDimension && !g.collected);
+            
+            for (const gem of gems) {
+                if (checkCollision(player, gem)) {
+                    gem.collected = true;
+                    score++;
+                    scoreElement.textContent = `Score: ${score}`;
+                    createParticles(gem.x + gem.width/2, gem.y + gem.height/2, '#ffdd00', 10);
+                }
+            }
+            
+            // Check collisions with hazards
+            const hazards = currentLevelData.hazards.filter(h => h.dimension === currentDimension);
+            
+            for (const hazard of hazards) {
+                if (checkCollision(player, hazard)) {
+                    // Reset player position
+                    player.x = currentLevelData.playerStart.x;
+                    player.y = currentLevelData.playerStart.y;
+                    player.velocityX = 0;
+                    player.velocityY = 0;
+                    
+                    // Create death effect
+                    createParticles(player.x + player.width/2, player.y + player.height/2, '#ff0000', 20);
+                }
+            }
+            
+            // Check if player reached the portal
+            if (checkCollision(player, currentLevelData.portal)) {
+                levelComplete();
+            }
+            
+            // Check if player fell off the map
+            if (player.y > canvas.height) {
+                // Reset player position
+                player.x = currentLevelData.playerStart.x;
+                player.y = currentLevelData.playerStart.y;
+                player.velocityX = 0;
+                player.velocityY = 0;
+            }
+        }
+        
+        // Check collision between two rectangles
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+        
+        // Render game
+        function render() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw background based on dimension
+            if (currentDimension === 'normal') {
+                ctx.fillStyle = '#0a1a2a';
+            } else {
+                ctx.fillStyle = '#1a0a2a';
+            }
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw platforms
+            const platforms = currentLevelData.platforms.filter(p => p.dimension === currentDimension);
+            
+            for (const platform of platforms) {
+                if (currentDimension === 'normal') {
+                    ctx.fillStyle = '#2a4a8a';
+                } else {
+                    ctx.fillStyle = '#6a2a8a';
+                }
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                
+                // Add platform highlight
+                if (currentDimension === 'normal') {
+                    ctx.fillStyle = '#3a5a9a';
+                } else {
+                    ctx.fillStyle = '#7a3a9a';
+                }
+                ctx.fillRect(platform.x, platform.y, platform.width, 5);
+            }
+            
+            // Draw gems
+            const gems = currentLevelData.gems.filter(g => g.dimension === currentDimension && !g.collected);
+            
+            for (const gem of gems) {
+                ctx.fillStyle = '#ffdd00';
+                ctx.beginPath();
+                ctx.arc(gem.x + gem.width/2, gem.y + gem.height/2, gem.width/2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add gem shine
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(gem.x + gem.width/3, gem.y + gem.height/3, gem.width/6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw hazards
+            const hazards = currentLevelData.hazards.filter(h => h.dimension === currentDimension);
+            
+            for (const hazard of hazards) {
+                ctx.fillStyle = '#ff4444';
+                ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+                
+                // Add hazard spikes
+                ctx.beginPath();
+                ctx.moveTo(hazard.x, hazard.y + hazard.height);
+                ctx.lineTo(hazard.x + hazard.width/2, hazard.y);
+                ctx.lineTo(hazard.x + hazard.width, hazard.y + hazard.height);
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            // Draw portal
+            ctx.fillStyle = '#44ff88';
+            ctx.beginPath();
+            ctx.arc(
+                currentLevelData.portal.x + currentLevelData.portal.width/2,
+                currentLevelData.portal.y + currentLevelData.portal.height/2,
+                currentLevelData.portal.width/2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Add portal glow
+            const gradient = ctx.createRadialGradient(
+                currentLevelData.portal.x + currentLevelData.portal.width/2,
+                currentLevelData.portal.y + currentLevelData.portal.height/2,
+                0,
+                currentLevelData.portal.x + currentLevelData.portal.width/2,
+                currentLevelData.portal.y + currentLevelData.portal.height/2,
+                currentLevelData.portal.width
+            );
+            gradient.addColorStop(0, 'rgba(68, 255, 136, 0.8)');
+            gradient.addColorStop(1, 'rgba(68, 255, 136, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(
+                currentLevelData.portal.x + currentLevelData.portal.width/2,
+                currentLevelData.portal.y + currentLevelData.portal.height/2,
+                currentLevelData.portal.width,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Draw player
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Add player eyes
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(player.x + 5, player.y + 10, 5, 5);
+            ctx.fillRect(player.x + 20, player.y + 10, 5, 5);
+        }
+        
+        // Level complete
+        function levelComplete() {
+            gameRunning = false;
+            
+            // Calculate stars based on performance
+            let stars = 0;
+            const timeBonus = Math.max(0, currentLevelData.timeLimit - elapsedTime);
+            const gemScore = score;
+            
+            if (gemScore >= currentLevelData.targetScore) stars++;
+            if (timeBonus > 0) stars++;
+            if (gemScore >= currentLevelData.targetScore && timeBonus > currentLevelData.timeLimit/2) stars++;
+            
+            // Update UI
+            levelCompleteText.textContent = `You completed the level in ${elapsedTime} seconds with ${score} gems!`;
+            
+            // Show stars
+            document.getElementById('star1').classList.toggle('earned', stars >= 1);
+            document.getElementById('star2').classList.toggle('earned', stars >= 2);
+            document.getElementById('star3').classList.toggle('earned', stars >= 3);
+            
+            // Show level complete screen
+            levelCompleteScreen.classList.remove('hidden');
+        }
+        
+        // Next level
+        function nextLevel() {
+            levelCompleteScreen.classList.add('hidden');
+            
+            if (currentLevel < levels.length) {
+                currentLevel++;
+                loadLevel(currentLevel);
+                gameRunning = true;
+                gameLoop();
+            } else {
+                // Game over (all levels completed)
+                gameOverScreen.classList.remove('hidden');
+                gameOverText.textContent = `You've completed all levels! Final score: ${score}`;
+            }
+        }
+        
+        // Restart level
+        function restartLevel() {
+            levelCompleteScreen.classList.add('hidden');
+            loadLevel(currentLevel);
+            gameRunning = true;
+            gameLoop();
+        }
+        
+        // Restart game
+        function restartGame() {
+            gameOverScreen.classList.add('hidden');
+            startGame();
+        }
+        
+        // Initialize the game
+        init();
+    </script>
+</body>
+</html>
